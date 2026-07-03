@@ -1,0 +1,590 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Credify – AI Fact Checker</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"/>
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
+<link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;500;600;700;800&family=Instrument+Sans:ital,wght@0,400;0,500;0,600;1,400&display=swap" rel="stylesheet"/>
+<link rel="stylesheet" href="style.css"/>
+</head>
+<body>
+
+<!-- ========== SCREEN 1: HOME (unauthenticated) ========== -->
+<div class="screen active" id="screen-home">
+  <nav class="navbar">
+    <div class="logo">Credify</div>
+    <div class="nav-right">
+      <button class="btn-ghost" onclick="goto('screen-login')">Sign in</button>
+      <button class="btn-primary" onclick="goto('screen-register')">Sign up</button>
+    </div>
+  </nav>
+
+  <div class="hero-bg">
+    <div class="grid-overlay"></div>
+    <div class="glow-blob"></div>
+  </div>
+
+  <main class="hero-section">
+    <div class="hero-inner">
+      <div class="hero-badge">
+        <svg width="12" height="12" viewBox="0 0 12 12" fill="none"><circle cx="6" cy="6" r="5" fill="rgba(167,139,250,0.4)"/><circle cx="6" cy="6" r="2.5" fill="#A78BFA"/></svg>
+        AI-powered fact checking
+      </div>
+      <h1 class="hero-title">Is it real<br><em>or fake?</em></h1>
+      <p class="hero-sub">Paste anything — a URL, a claim, an image — and get an instant credibility report. Powered by Google Gemini.</p>
+
+      <!-- Smart Composer Box -->
+      <div class="composer" id="main-composer">
+        <div class="composer-attachments" id="attachments-preview"></div>
+        <div class="composer-input-row">
+          <textarea
+            class="composer-textarea"
+            id="main-textarea"
+            placeholder="Paste a URL, type a claim, or describe what you want to verify…"
+            rows="1"
+            oninput="autoResize(this); detectInputType(this.value)"
+            onkeydown="handleComposerKey(event)"
+          ></textarea>
+        </div>
+        <div class="composer-footer">
+          <div class="composer-tools">
+            <button class="tool-btn" id="attach-btn" title="Attach image or document" onclick="triggerFileUpload()">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M21.44 11.05l-9.19 9.19a6 6 0 01-8.49-8.49l9.19-9.19a4 4 0 015.66 5.66l-9.2 9.19a2 2 0 01-2.83-2.83l8.49-8.48"/>
+              </svg>
+            </button>
+            <div class="input-type-badge" id="type-badge"></div>
+          </div>
+          <div class="composer-right">
+            <span class="composer-hint" id="composer-hint">Press ⏎ to analyze</span>
+            <button class="composer-send" id="send-btn" onclick="goto('screen-loading')" title="Analyze">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                <line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/>
+              </svg>
+            </button>
+          </div>
+        </div>
+      </div>
+      <input type="file" id="file-upload" accept="image/*,.pdf,.doc,.docx" style="display:none" onchange="handleFileUpload(this)"/>
+
+      <div class="community-stats">
+        <div class="stat">
+          <span class="stat-num">12,481</span>
+          <span class="stat-lbl">Articles checked</span>
+        </div>
+        <div class="stat-div"></div>
+        <div class="stat">
+          <span class="stat-num">3,241</span>
+          <span class="stat-lbl">Checked today</span>
+        </div>
+        <div class="stat-div"></div>
+        <div class="stat">
+          <span class="stat-num">98%</span>
+          <span class="stat-lbl">Accuracy rate</span>
+        </div>
+      </div>
+
+      <div class="guest-note">
+        <button class="link-btn" onclick="goto('screen-home-auth')">Continue as guest</button>
+        &nbsp;·&nbsp; No account needed
+      </div>
+    </div>
+  </main>
+</div>
+
+<!-- ========== SCREEN 2: LOGIN ========== -->
+<div class="screen" id="screen-login">
+  <nav class="navbar">
+    <div class="logo" onclick="goto('screen-home')" style="cursor:pointer">Credify</div>
+    <button class="btn-ghost" onclick="goto('screen-register')">Create account</button>
+  </nav>
+
+  <div class="hero-bg">
+    <div class="grid-overlay"></div>
+    <div class="glow-blob" style="opacity:0.4"></div>
+  </div>
+
+  <main class="form-section">
+    <div class="form-card">
+      <div class="form-logo-mark">C</div>
+      <h2 class="form-title">Welcome back</h2>
+      <p class="form-sub">Sign in to access your history and reports</p>
+
+      <div class="field-group">
+        <label class="field-label">Email address</label>
+        <input type="email" class="field-input" placeholder="you@example.com" autocomplete="email"/>
+      </div>
+
+      <div class="field-group">
+        <div class="field-label-row">
+          <label class="field-label">Password</label>
+          <span class="form-link-small">Forgot password?</span>
+        </div>
+        <div class="password-wrap">
+          <input type="password" class="field-input" placeholder="••••••••" id="login-pass" autocomplete="current-password"/>
+          <button class="eye-btn" onclick="togglePass('login-pass', this)" tabindex="-1">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+          </button>
+        </div>
+      </div>
+
+      <p class="form-error" id="login-error"></p>
+      <button class="btn-submit" onclick="handleLogin()">
+        Sign in
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>
+      </button>
+
+      <div class="divider">
+        <span class="divider-line"></span>
+        <span class="divider-text">or</span>
+        <span class="divider-line"></span>
+      </div>
+
+      <div class="oauth-row">
+        <button class="btn-oauth" onclick="goto('screen-home-auth')">
+          <svg width="16" height="16" viewBox="0 0 24 24"><path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4"/><path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853"/><path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" fill="#FBBC05"/><path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335"/></svg>
+          Continue with Google
+        </button>
+      </div>
+
+      <p class="form-footnote">Don't have an account? <span class="form-link" onclick="goto('screen-register')">Sign up free</span></p>
+      <p class="form-footnote" style="margin-top:6px">
+        <span class="form-link dim" onclick="goto('screen-home-auth')">Continue as guest →</span>
+      </p>
+    </div>
+  </main>
+</div>
+
+<!-- ========== SCREEN 3: REGISTER ========== -->
+<div class="screen" id="screen-register">
+  <nav class="navbar">
+    <div class="logo" onclick="goto('screen-home')" style="cursor:pointer">Credify</div>
+    <button class="btn-ghost" onclick="goto('screen-login')">Sign in</button>
+  </nav>
+
+  <div class="hero-bg">
+    <div class="grid-overlay"></div>
+    <div class="glow-blob" style="opacity:0.35"></div>
+  </div>
+
+  <main class="form-section">
+    <div class="form-card">
+      <div class="form-logo-mark">C</div>
+      <h2 class="form-title">Create an account</h2>
+      <p class="form-sub">Save your verifications and access full reports</p>
+
+      <div class="field-group">
+        <label class="field-label">Full name</label>
+        <input type="text" class="field-input" placeholder="Your name" autocomplete="name"/>
+      </div>
+
+      <div class="field-group">
+        <label class="field-label">Email address</label>
+        <input type="email" class="field-input" placeholder="you@example.com" autocomplete="email"/>
+      </div>
+
+      <div class="field-group">
+        <label class="field-label">Password</label>
+        <div class="password-wrap">
+          <input type="password" class="field-input" placeholder="Create a password" id="reg-pass" oninput="checkStrength(this.value)" autocomplete="new-password"/>
+          <button class="eye-btn" onclick="togglePass('reg-pass', this)" tabindex="-1">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+          </button>
+        </div>
+        <div class="strength-row" id="strength-row">
+          <div class="strength-track"><div class="strength-fill" id="strength-fill"></div></div>
+          <span class="strength-label" id="strength-label"></span>
+        </div>
+      </div>
+
+      <div class="field-group">
+        <label class="field-label">Confirm password</label>
+        <div class="password-wrap">
+          <input type="password" class="field-input" placeholder="Repeat your password" id="confirm-pass" autocomplete="new-password"/>
+          <button class="eye-btn" onclick="togglePass('confirm-pass', this)" tabindex="-1">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+          </button>
+        </div>
+      </div>
+
+      <p class="form-error" id="register-error"></p>
+      <button class="btn-submit" onclick="handleRegister()">
+        Create account
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>
+      </button>
+
+      <div class="divider">
+        <span class="divider-line"></span>
+        <span class="divider-text">or</span>
+        <span class="divider-line"></span>
+      </div>
+
+      <div class="oauth-row">
+        <button class="btn-oauth" onclick="goto('screen-home-auth')">
+          <svg width="16" height="16" viewBox="0 0 24 24"><path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4"/><path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853"/><path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" fill="#FBBC05"/><path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335"/></svg>
+          Sign up with Google
+        </button>
+      </div>
+
+      <p class="form-footnote">Already have an account? <span class="form-link" onclick="goto('screen-login')">Sign in</span></p>
+      <p class="form-footnote" style="margin-top:6px">
+        <span class="form-link dim" onclick="goto('screen-home-auth')">Continue as guest →</span>
+      </p>
+    </div>
+  </main>
+</div>
+
+<!-- ========== SCREEN 4: HOME AUTHENTICATED ========== -->
+<div class="screen" id="screen-home-auth">
+  <nav class="navbar">
+    <div class="logo">Credify</div>
+    <div class="nav-right">
+      <button class="btn-ghost" onclick="goto('screen-history')">History</button>
+      <button class="btn-ghost" onclick="goto('screen-trends')">Trends</button>
+      <div class="avatar" onclick="goto('screen-profile')">V</div>
+    </div>
+  </nav>
+
+  <div class="hero-bg">
+    <div class="grid-overlay"></div>
+    <div class="glow-blob"></div>
+  </div>
+
+  <main class="hero-section">
+    <div class="hero-inner">
+      <div class="hero-badge">
+        <svg width="12" height="12" viewBox="0 0 12 12" fill="none"><circle cx="6" cy="6" r="5" fill="rgba(167,139,250,0.4)"/><circle cx="6" cy="6" r="2.5" fill="#A78BFA"/></svg>
+        AI-powered fact checking
+      </div>
+      <h1 class="hero-title">Is it real<br><em>or fake?</em></h1>
+      <p class="hero-sub">Paste anything — a URL, a claim, an image — and get an instant credibility report.</p>
+
+      <div class="composer" id="auth-composer">
+        <div class="composer-attachments" id="auth-attachments-preview"></div>
+        <div class="composer-input-row">
+          <textarea
+            class="composer-textarea"
+            id="auth-textarea"
+            placeholder="Paste a URL, type a claim, or describe what you want to verify…"
+            rows="1"
+            oninput="autoResize(this); detectInputType(this.value, 'auth-type-badge')"
+            onkeydown="handleComposerKey(event)"
+          ></textarea>
+        </div>
+        <div class="composer-footer">
+          <div class="composer-tools">
+            <button class="tool-btn" title="Attach image or document" onclick="triggerFileUpload('auth-file-upload', 'auth-attachments-preview')">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M21.44 11.05l-9.19 9.19a6 6 0 01-8.49-8.49l9.19-9.19a4 4 0 015.66 5.66l-9.2 9.19a2 2 0 01-2.83-2.83l8.49-8.48"/>
+              </svg>
+            </button>
+            <div class="input-type-badge" id="auth-type-badge"></div>
+          </div>
+          <div class="composer-right">
+            <span class="composer-hint">Press ⏎ to analyze</span>
+            <button class="composer-send" onclick="goto('screen-loading')" title="Analyze">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                <line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/>
+              </svg>
+            </button>
+          </div>
+        </div>
+      </div>
+      <input type="file" id="auth-file-upload" accept="image/*,.pdf,.doc,.docx" style="display:none" onchange="handleFileUpload(this, 'auth-attachments-preview')"/>
+
+      <div class="community-stats">
+        <div class="stat"><span class="stat-num">12,481</span><span class="stat-lbl">Articles checked</span></div>
+        <div class="stat-div"></div>
+        <div class="stat"><span class="stat-num">3,241</span><span class="stat-lbl">Checked today</span></div>
+        <div class="stat-div"></div>
+        <div class="stat"><span class="stat-num">98%</span><span class="stat-lbl">Accuracy rate</span></div>
+      </div>
+    </div>
+  </main>
+</div>
+
+<!-- ========== SCREEN 5: LOADING ========== -->
+<div class="screen" id="screen-loading">
+  <nav class="navbar">
+    <div class="logo">Credify</div>
+    <div class="avatar" onclick="goto('screen-profile')">V</div>
+  </nav>
+  <main class="loading-section">
+    <div class="submitted-pill">https://abs-cbn.com/focus/04/03/18/macalintal-bongbong-marcos-allegations-are-fake-news</div>
+    <div class="spinner"></div>
+    <h2 class="loading-title">Analyzing your source</h2>
+    <p class="loading-sub">This usually takes a few seconds</p>
+    <div class="steps-list">
+      <div class="step done"><div class="step-dot done"></div><span>Fetching content from URL</span></div>
+      <div class="step done"><div class="step-dot done"></div><span>Identifying publisher and source</span></div>
+      <div class="step active"><div class="step-dot active"></div><span>Running AI credibility analysis...</span></div>
+      <div class="step pending"><div class="step-dot pending"></div><span>Cross-referencing related sources</span></div>
+      <div class="step pending"><div class="step-dot pending"></div><span>Generating your result</span></div>
+    </div>
+    <button class="btn-primary" style="margin-top:32px;" onclick="goto('screen-result-high')">See result (98%)</button>
+    <button class="btn-ghost" style="margin-top:10px;" onclick="goto('screen-result-mid')">See result (56%)</button>
+    <button class="btn-ghost" style="margin-top:10px;" onclick="goto('screen-result-low')">See result (10%)</button>
+  </main>
+</div>
+
+<!-- ========== SCREEN 6: RESULT HIGH ========== -->
+<div class="screen" id="screen-result-high">
+  <nav class="navbar">
+    <div class="logo">Credify</div>
+    <div class="nav-right">
+      <button class="btn-ghost" onclick="goto('screen-home-auth')">New check</button>
+      <div class="avatar" onclick="goto('screen-profile')">V</div>
+    </div>
+  </nav>
+  <main class="result-section">
+    <div class="score-card high">
+      <div class="score-circle high">98</div>
+      <div class="score-info">
+        <span class="score-label high">Credible source</span>
+        <div class="score-num">98<span style="font-size:18px;font-weight:400;color:var(--text3)">/100</span></div>
+        <div class="score-desc">This source shows strong credibility markers</div>
+      </div>
+      <div class="tags-col">
+        <span class="tag green">✓ Verified publisher</span>
+        <span class="tag green">✓ Original reporting</span>
+        <span class="tag gray">Mainstream media</span>
+      </div>
+    </div>
+
+    <div class="two-col">
+      <div class="info-box">
+        <div class="box-title">Credibility breakdown</div>
+        <div class="cred-row"><span class="cred-key">Source reputation</span><div class="cred-bar"><div class="cred-fill" style="width:95%;background:var(--green)"></div></div></div>
+        <div class="cred-row"><span class="cred-key">Factual accuracy</span><div class="cred-bar"><div class="cred-fill" style="width:90%;background:var(--green)"></div></div></div>
+        <div class="cred-row"><span class="cred-key">Bias rating</span><div class="cred-bar"><div class="cred-fill" style="width:78%;background:var(--yellow)"></div></div></div>
+        <div class="cred-row"><span class="cred-key">Transparency</span><div class="cred-bar"><div class="cred-fill" style="width:88%;background:var(--green)"></div></div></div>
+      </div>
+      <div class="info-box">
+        <div class="box-title">Source details</div>
+        <div class="detail-row"><span class="dk">Publisher</span><span class="dv">ABS-CBN News</span></div>
+        <div class="detail-row"><span class="dk">Domain age</span><span class="dv">22 years</span></div>
+        <div class="detail-row"><span class="dk">MBFC rating</span><span class="dv green">High factual</span></div>
+        <div class="detail-row"><span class="dk">Bias</span><span class="dv yellow">Center-left</span></div>
+        <div class="detail-row"><span class="dk">Input type</span><span class="dv">URL</span></div>
+      </div>
+    </div>
+
+    <div class="info-box" style="margin-bottom:20px">
+      <div class="box-title">AI analysis summary</div>
+      <div class="box-text">ABS-CBN News is a well-established Philippine broadcaster with over two decades of digital presence. The article cites named primary sources and includes verifiable legal documents. Cross-referencing with other reputable outlets confirms the core claims. No significant factual discrepancies were detected.</div>
+    </div>
+
+    <div class="articles-grid">
+      <div class="article-card"><span class="art-src">Rappler</span><div class="art-title">Macalintal files disqualification case vs Marcos in poll body</div></div>
+      <div class="article-card"><span class="art-src">Inquirer</span><div class="art-title">Lawyer explains Marcos tax case implications for candidacy</div></div>
+    </div>
+    <div class="action-bar">
+      <button class="btn-recheck" onclick="goto('screen-loading')">↺ Re-check</button>
+      <button class="btn-share">↗ Share report</button>
+      <button class="btn-outline-purple" onclick="goto('screen-flag')">⚑ Flag issue</button>
+    </div>
+  </main>
+</div>
+
+<!-- ========== SCREEN 7: RESULT MID ========== -->
+<div class="screen" id="screen-result-mid">
+  <nav class="navbar">
+    <div class="logo">Credify</div>
+    <div class="nav-right">
+      <button class="btn-ghost" onclick="goto('screen-home-auth')">New check</button>
+      <div class="avatar" onclick="goto('screen-profile')">V</div>
+    </div>
+  </nav>
+  <main class="result-section">
+    <div class="score-card mid">
+      <div class="score-circle mid">56</div>
+      <div class="score-info">
+        <span class="score-label mid">Uncertain</span>
+        <div class="score-num">56<span style="font-size:18px;font-weight:400;color:var(--text3)">/100</span></div>
+        <div class="score-desc">Mixed signals — verify with additional sources</div>
+      </div>
+      <div class="tags-col">
+        <span class="tag yellow">⚠ Unverified claims</span>
+        <span class="tag yellow">⚠ Satire possible</span>
+        <span class="tag gray">Text input</span>
+      </div>
+    </div>
+    <div class="info-box" style="margin-bottom:20px">
+      <div class="box-title">AI analysis summary</div>
+      <div class="box-text">The claim about tax increases is partially substantiated. While government officials have discussed potential revenue measures, no formal legislation has been passed. Several sources dispute the specific figures cited. More context is needed before drawing conclusions.</div>
+    </div>
+    <div class="action-bar">
+      <button class="btn-recheck" onclick="goto('screen-loading')">↺ Re-check</button>
+      <button class="btn-share">↗ Share report</button>
+      <button class="btn-outline-purple" onclick="goto('screen-flag')">⚑ Flag issue</button>
+    </div>
+  </main>
+</div>
+
+<!-- ========== SCREEN 8: RESULT LOW ========== -->
+<div class="screen" id="screen-result-low">
+  <nav class="navbar">
+    <div class="logo">Credify</div>
+    <div class="nav-right">
+      <button class="btn-ghost" onclick="goto('screen-home-auth')">New check</button>
+      <div class="avatar" onclick="goto('screen-profile')">V</div>
+    </div>
+  </nav>
+  <main class="result-section">
+    <div class="score-card low">
+      <div class="score-circle low">10</div>
+      <div class="score-info">
+        <span class="score-label low">Not credible</span>
+        <div class="score-num">10<span style="font-size:18px;font-weight:400;color:var(--text3)">/100</span></div>
+        <div class="score-desc">High likelihood of misinformation</div>
+      </div>
+      <div class="tags-col">
+        <span class="tag red">✗ Fake news site</span>
+        <span class="tag red">✗ No author listed</span>
+        <span class="tag gray">URL</span>
+      </div>
+    </div>
+    <div class="info-box" style="margin-bottom:20px">
+      <div class="box-title">AI analysis summary</div>
+      <div class="box-text">This domain has a history of publishing fabricated stories and clickbait headlines. The site lacks editorial standards, has no traceable ownership, and has been flagged by multiple fact-checking organizations including Vera Files and Rappler's fact-check team.</div>
+    </div>
+    <div class="action-bar">
+      <button class="btn-recheck" onclick="goto('screen-loading')">↺ Re-check</button>
+      <button class="btn-share">↗ Share report</button>
+      <button class="btn-outline-purple" onclick="goto('screen-flag')">⚑ Flag issue</button>
+    </div>
+  </main>
+</div>
+
+<!-- ========== SCREEN 9: HISTORY ========== -->
+<div class="screen" id="screen-history">
+  <nav class="navbar">
+    <div class="logo">Credify</div>
+    <div class="nav-right">
+      <button class="btn-ghost" onclick="goto('screen-home-auth')">← Back</button>
+      <div class="avatar" onclick="goto('screen-profile')">V</div>
+    </div>
+  </nav>
+  <main class="body-section">
+    <h2 class="page-title">Verification history</h2>
+    <p class="page-sub">All your past verifications in one place</p>
+    <div class="filter-row">
+      <button class="filter-pill active" onclick="setFilter(this)">All</button>
+      <button class="filter-pill" onclick="setFilter(this)">Credible</button>
+      <button class="filter-pill" onclick="setFilter(this)">Uncertain</button>
+      <button class="filter-pill" onclick="setFilter(this)">Not credible</button>
+    </div>
+    <div class="hist-item" onclick="goto('screen-result-high')">
+      <div class="hist-badge green">98</div>
+      <div class="hist-info">
+        <div class="hist-url">https://abs-cbn.com/focus/04/03/macalintal-bongbong-marcos-allegations</div>
+        <div class="hist-date">Apr 3, 2026 · URL · Credible</div>
+      </div>
+      <span class="hist-arrow">›</span>
+    </div>
+    <div class="hist-item" onclick="goto('screen-result-mid')">
+      <div class="hist-badge yellow">56</div>
+      <div class="hist-info">
+        <div class="hist-url">Is it true that the government will raise taxes this year?</div>
+        <div class="hist-date">Apr 2, 2026 · Text · Uncertain</div>
+      </div>
+      <span class="hist-arrow">›</span>
+    </div>
+    <div class="hist-item" onclick="goto('screen-result-low')">
+      <div class="hist-badge red">10</div>
+      <div class="hist-info">
+        <div class="hist-url">https://fakenewssite.com/breaking-news-viral-claim-2026</div>
+        <div class="hist-date">Apr 1, 2026 · URL · Not credible</div>
+      </div>
+      <span class="hist-arrow">›</span>
+    </div>
+    <div class="hist-item" onclick="goto('screen-result-high')">
+      <div class="hist-badge green">91</div>
+      <div class="hist-info">
+        <div class="hist-url">https://rappler.com/nation/philippine-economy-update-2026</div>
+        <div class="hist-date">Mar 30, 2026 · URL · Credible</div>
+      </div>
+      <span class="hist-arrow">›</span>
+    </div>
+  </main>
+</div>
+
+<!-- ========== SCREEN 10: TRENDS ========== -->
+<div class="screen" id="screen-trends">
+  <nav class="navbar">
+    <div class="logo">Credify</div>
+    <div class="nav-right">
+      <button class="btn-ghost" onclick="goto('screen-home-auth')">← Back</button>
+      <div class="avatar" onclick="goto('screen-profile')">V</div>
+    </div>
+  </nav>
+  <main class="body-section">
+    <h2 class="page-title">Misinformation trends</h2>
+    <p class="page-sub">Topics most commonly targeted by fake news and misinformation</p>
+    <div class="trends-grid">
+      <div class="trend-card"><div class="trend-topic">Politics</div><div class="trend-count">4,821</div><div class="trend-lbl">flagged articles</div><div class="trend-bar-row"><div class="trend-bar-track"><div class="trend-bar-fill" style="width:92%;background:#F87171;"></div></div><span class="trend-pct">92%</span></div></div>
+      <div class="trend-card"><div class="trend-topic">Health</div><div class="trend-count">3,102</div><div class="trend-lbl">flagged articles</div><div class="trend-bar-row"><div class="trend-bar-track"><div class="trend-bar-fill" style="width:74%;background:#FACC15;"></div></div><span class="trend-pct">74%</span></div></div>
+      <div class="trend-card"><div class="trend-topic">Economy</div><div class="trend-count">1,894</div><div class="trend-lbl">flagged articles</div><div class="trend-bar-row"><div class="trend-bar-track"><div class="trend-bar-fill" style="width:56%;background:#A78BFA;"></div></div><span class="trend-pct">56%</span></div></div>
+      <div class="trend-card"><div class="trend-topic">Science</div><div class="trend-count">1,201</div><div class="trend-lbl">flagged articles</div><div class="trend-bar-row"><div class="trend-bar-track"><div class="trend-bar-fill" style="width:38%;background:#A78BFA;"></div></div><span class="trend-pct">38%</span></div></div>
+      <div class="trend-card"><div class="trend-topic">Celebrities</div><div class="trend-count">987</div><div class="trend-lbl">flagged articles</div><div class="trend-bar-row"><div class="trend-bar-track"><div class="trend-bar-fill" style="width:29%;background:#4ADE80;"></div></div><span class="trend-pct">29%</span></div></div>
+      <div class="trend-card"><div class="trend-topic">Disaster</div><div class="trend-count">654</div><div class="trend-lbl">flagged articles</div><div class="trend-bar-row"><div class="trend-bar-track"><div class="trend-bar-fill" style="width:18%;background:#4ADE80;"></div></div><span class="trend-pct">18%</span></div></div>
+    </div>
+  </main>
+</div>
+
+<!-- ========== SCREEN 11: FLAG ========== -->
+<div class="screen" id="screen-flag">
+  <nav class="navbar">
+    <div class="logo">Credify</div>
+    <div class="avatar" onclick="goto('screen-profile')">V</div>
+  </nav>
+  <main class="modal-section">
+    <div class="modal-card">
+      <div class="modal-icon">
+        <svg width="28" height="28" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="10" fill="rgba(34,197,94,0.2)"/><path d="M8 12l3 3 5-5" stroke="#4ADE80" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      </div>
+      <h2 class="modal-title">Report submitted</h2>
+      <p class="modal-text">Thank you for helping keep Credify accurate. Your report has been recorded and will be reviewed for trend analysis.</p>
+      <button class="btn-submit" onclick="goto('screen-result-high')">Back to results</button>
+      <button class="btn-ghost-full" style="margin-top:10px;" onclick="goto('screen-history')">View my reports</button>
+    </div>
+  </main>
+</div>
+
+<!-- ========== SCREEN 12: PROFILE ========== -->
+<div class="screen" id="screen-profile">
+  <nav class="navbar">
+    <div class="logo">Credify</div>
+    <div class="nav-right">
+      <button class="btn-ghost" onclick="goto('screen-home-auth')">← Back</button>
+      <div class="avatar">V</div>
+    </div>
+  </nav>
+  <main class="body-section">
+    <div class="profile-header">
+      <div class="profile-avatar">V</div>
+      <div>
+        <div class="profile-name">Vin Charles</div>
+        <div class="profile-email">vincharles@email.com</div>
+      </div>
+    </div>
+    <div class="stats-grid">
+      <div class="stat-card"><div class="stat-big green">24</div><div class="stat-lbl">Verified</div></div>
+      <div class="stat-card"><div class="stat-big red">5</div><div class="stat-lbl">Flagged</div></div>
+      <div class="stat-card"><div class="stat-big purple">12</div><div class="stat-lbl">This month</div></div>
+    </div>
+    <div class="setting-item"><span class="setting-name">Email address</span><span class="setting-action" onclick="changeEmail('skibidiT0ilet@sixseven.com')">Change</span></div>
+    <div class="setting-item"><span class="setting-name">Password</span><span class="setting-action"onclick="changePassword('skibidiT0ilet')">Update</span></div>
+    <div class="setting-item"><span class="setting-name">Notification preferences</span><span class="setting-action">Manage</span></div>
+    <div class="setting-item"><span class="setting-name">Clear verification history</span><span class="setting-action danger">Clear all</span></div>
+    <div class="setting-item"><span class="setting-name">Delete account</span><span class="setting-action danger" onclick="deleteAccount()">Delete</span></div>
+    <button class="btn-ghost-full" style="margin-top:24px;" onclick="handleLogout()">Sign out</button>
+  </main>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="app.js"></script>
+</body>
+</html>

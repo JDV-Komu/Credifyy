@@ -1,0 +1,43 @@
+Requirements:
+- Git bash installed
+- Docker installed
+- Uvicorn installed
+
+
+
+## Starting the code
+-- open docker
+-- open folder using git bash
+
+# 1. Start Supabase
+supabase start
+
+# 2. Start FastAPI backend
+- open the credify_main folder in windows powershell
+- run py -m uvicorn main:app --reload
+uvicorn main:app --reload
+
+# 3. Open frontend
+- open index.html in a browser (or use Live Server in VS Code)
+
+
+# opening the database
+go to browser and paste in address bar: http://localhost:54323/
+congrats!
+# properly stopping the code
+- run command "supabase stop" in git bash
+- close docker application
+
+# server sided instructions for when we switch to server side (subject to change)
+<!-- # Step 1 — make sure Docker Desktop is open and running
+
+# Step 2 — start local Supabase
+supabase start
+
+# Step 3 — start your Node backend
+node server.js
+
+# Step 4 — open index.html with Live Server
+
+
+ -->
