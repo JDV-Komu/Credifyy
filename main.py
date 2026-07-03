@@ -9,10 +9,16 @@ print("URL:", os.getenv("SUPABASE_URL"))
 print("KEY:", os.getenv("SUPABASE_SERVICE_KEY"))
 
 #note to self: this should load AFTER load_dotenv function()
+<<<<<<< HEAD
 from routers import account, scan
 app = FastAPI()
 app.include_router(account.router)
 app.include_router(scan.router)  # /scan credibility endpoint
+=======
+from routers import account
+app = FastAPI()
+app.include_router(account.router)
+>>>>>>> 30c51b6 (account creation, login and logout, email change, password change and account deletion features wip. skibidi sigma gyatt level 67)
 
 # This allows your HTML file to talk to Python
 # Without this, the browser will block every request

@@ -19,9 +19,22 @@ function setFilter(el) {
   el.classList.add('active');
 }
 
+<<<<<<< HEAD
 // ── Loading screen ─────────────────────────────────────────────
 // (The old code auto-jumped to a hardcoded 98% result after 3.2s.
 //  Navigation is now driven by runScan() once the real analysis returns.)
+=======
+// ── Auto-advance loading screen ────────────────────────────────
+document.querySelectorAll('.screen').forEach(screen => {
+  new MutationObserver(mutations => {
+    mutations.forEach(m => {
+      if (m.target.id === 'screen-loading' && m.target.classList.contains('active')) {
+        setTimeout(() => goto('screen-result-high'), 3200);
+      }
+    });
+  }).observe(screen, { attributes: true, attributeFilter: ['class'] });
+});
+>>>>>>> 30c51b6 (account creation, login and logout, email change, password change and account deletion features wip. skibidi sigma gyatt level 67)
 
 // ── Animate credibility bars on result screens ──────────────────
 function animateBars() {
@@ -81,6 +94,7 @@ function detectInputType(value, badgeId = 'type-badge') {
 function handleComposerKey(event) {
   if (event.key === 'Enter' && !event.shiftKey) {
     event.preventDefault();
+<<<<<<< HEAD
     runScan();
   }
 }
@@ -460,6 +474,12 @@ function heuristicScanJS(payload) {
   return assemble(score, confidence, isUrl ? 'Article' : 'Text claim', breakdown, details, tags, bits.join(' '));
 }
 
+=======
+    goto('screen-loading');
+  }
+}
+
+>>>>>>> 30c51b6 (account creation, login and logout, email change, password change and account deletion features wip. skibidi sigma gyatt level 67)
 // ── File attachment ────────────────────────────────────────────
 
 function triggerFileUpload(inputId = 'file-upload', previewId = 'attachments-preview') {
@@ -507,18 +527,25 @@ function addAttachmentChip(file, container) {
   remove.className = 'attachment-remove';
   remove.innerHTML = '×';
   remove.title = 'Remove';
+<<<<<<< HEAD
   remove.onclick = () => {
     chip.remove();
     if (scanAttachment === file) scanAttachment = null;
   };
+=======
+  remove.onclick = () => chip.remove();
+>>>>>>> 30c51b6 (account creation, login and logout, email change, password change and account deletion features wip. skibidi sigma gyatt level 67)
 
   chip.innerHTML = icon;
   chip.appendChild(name);
   chip.appendChild(remove);
   container.appendChild(chip);
+<<<<<<< HEAD
 
   // Remember the most recent image so runScan can actually analyze it.
   if (isImage) scanAttachment = file;
+=======
+>>>>>>> 30c51b6 (account creation, login and logout, email change, password change and account deletion features wip. skibidi sigma gyatt level 67)
 }
 
 // ── Handle paste events for URLs / images ──────────────────────
@@ -621,6 +648,7 @@ const Auth = {
   isLoggedIn() { return !!this.token; }
 };
 
+<<<<<<< HEAD
 // Pending flows (kept in memory between screens)
 let pendingSignup = null;  // { email, password } awaiting OTP verification
 let resetEmail = '';       // email awaiting password-reset OTP
@@ -651,6 +679,8 @@ function onlyDigits(el) {
   el.value = el.value.replace(/\D/g, '').slice(0, 6);
 }
 
+=======
+>>>>>>> 30c51b6 (account creation, login and logout, email change, password change and account deletion features wip. skibidi sigma gyatt level 67)
 function showError(elementId, message) {
   const el = document.getElementById(elementId);
   if (el) el.textContent = message;
@@ -661,7 +691,11 @@ function clearError(elementId) {
   if (el) el.textContent = '';
 }
 
+<<<<<<< HEAD
 // ── Register (step 1: send OTP) ────────────────────────────────
+=======
+// ── Register ───────────────────────────────────────────────────
+>>>>>>> 30c51b6 (account creation, login and logout, email change, password change and account deletion features wip. skibidi sigma gyatt level 67)
 async function handleRegister() {
   const account_name = document.querySelector('#screen-register input[type="text"]').value.trim();
   const email        = document.querySelector('#screen-register input[type="email"]').value.trim();
@@ -681,12 +715,19 @@ async function handleRegister() {
   }
 
   const btn = document.querySelector('#screen-register .btn-submit');
+<<<<<<< HEAD
   const orig = btn.innerHTML;
   btn.textContent = 'Sending code…';
   btn.disabled = true;
 
   try {
     // Creates the user (unconfirmed) and emails a 6-digit code.
+=======
+  btn.textContent = 'Creating account…';
+  btn.disabled = true;
+
+  try {
+>>>>>>> 30c51b6 (account creation, login and logout, email change, password change and account deletion features wip. skibidi sigma gyatt level 67)
     const { data, error } = await sbClient.auth.signUp({
       email,
       password,
@@ -697,6 +738,7 @@ async function handleRegister() {
       showError('register-error', error.message); return;
     }
 
+<<<<<<< HEAD
     // If email confirmations are OFF in Supabase, a session is returned right
     // away and there is no code to enter — just log the user in.
     if (data.session) {
@@ -871,6 +913,14 @@ async function resetPassword() {
     showError('reset-error', 'Could not connect to Supabase. Is it running?');
   } finally {
     btn.innerHTML = orig;
+=======
+    goto('screen-login');
+    showError('login-error', '✓ Account created! Please sign in.');
+  } catch (err) {
+    showError('register-error', 'Could not connect to Supabase. Is it running?');
+  } finally {
+    btn.textContent = 'Create account';
+>>>>>>> 30c51b6 (account creation, login and logout, email change, password change and account deletion features wip. skibidi sigma gyatt level 67)
     btn.disabled = false;
   }
 }
