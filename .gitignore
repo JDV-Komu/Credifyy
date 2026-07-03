@@ -1,6 +1,6 @@
 .env
-supabase/.branches
-supabase/.temp
+config.js
 __pycache__/
 *.pyc
-config.js
+supabase/.branches
+supabase/.temp
