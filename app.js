@@ -236,8 +236,8 @@ async function getToken() {
 // ── Config ─────────────────────────────────────────────────────
 
 // ── Config ─────────────────────────────────────────────────────
-const SUPABASE_URL = "http://127.0.0.1:54321";
-const SUPABASE_ANON_KEY = "sb_publishable_ACJWlzQHlZjBrEguHvfOxg_3BJgxAaH";
+//the url and anon key comes from a config.js file that can't be uploaded because we can't
+// share the anon key (really unsafe)
 const sbClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
 // ── Auth state ─────────────────────────────────────────────────

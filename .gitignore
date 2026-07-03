@@ -1,0 +1,6 @@
+.env
+supabase/.branches
+supabase/.temp
+__pycache__/
+*.pyc
+config.js
