@@ -19,16 +19,9 @@ function setFilter(el) {
   el.classList.add('active');
 }
 
-// ── Auto-advance loading screen ────────────────────────────────
-document.querySelectorAll('.screen').forEach(screen => {
-  new MutationObserver(mutations => {
-    mutations.forEach(m => {
-      if (m.target.id === 'screen-loading' && m.target.classList.contains('active')) {
-        setTimeout(() => goto('screen-result-high'), 3200);
-      }
-    });
-  }).observe(screen, { attributes: true, attributeFilter: ['class'] });
-});
+// ── Loading screen ─────────────────────────────────────────────
+// (The old code auto-jumped to a hardcoded 98% result after 3.2s.
+//  Navigation is now driven by runScan() once the real analysis returns.)
 
 // ── Animate credibility bars on result screens ──────────────────
 function animateBars() {
@@ -88,8 +81,383 @@ function detectInputType(value, badgeId = 'type-badge') {
 function handleComposerKey(event) {
   if (event.key === 'Enter' && !event.shiftKey) {
     event.preventDefault();
-    goto('screen-loading');
+    runScan();
   }
+}
+
+// ──────────────────────────────────────────────────────────────
+//  SCAN ENGINE  (the actual credibility check)
+// ──────────────────────────────────────────────────────────────
+
+const BACKEND_URL = "http://127.0.0.1:8000";
+
+// Grab whatever the user typed in the composer of the active screen.
+function getComposerInput() {
+  const active = document.querySelector('.screen.active');
+  const ta = active && active.querySelector('.composer-textarea');
+  return ta ? ta.value.trim() : '';
+}
+
+// Start a fresh check: clear any attached image, chips, and composer text.
+function newCheck() {
+  scanAttachment = null;
+  document.querySelectorAll('.composer-attachments').forEach(el => { el.innerHTML = ''; });
+  document.querySelectorAll('.composer-textarea').forEach(el => { el.value = ''; el.style.height = 'auto'; });
+  document.querySelectorAll('.input-type-badge').forEach(el => { el.textContent = ''; el.classList.remove('visible'); });
+  goto(Auth.isLoggedIn() ? 'screen-home-auth' : 'screen-home');
+}
+
+// The image currently attached to the composer (if any), kept so runScan
+// can actually send it for analysis.
+let scanAttachment = null;
+let lastScan = null; // last payload, for the Re-check button
+
+function readFileAsDataURL(file) {
+  return new Promise((resolve, reject) => {
+    const r = new FileReader();
+    r.onload = () => resolve(r.result);
+    r.onerror = () => reject(new Error('read failed'));
+    r.readAsDataURL(file);
+  });
+}
+
+async function runScan() {
+  const text = getComposerInput();
+  const file = scanAttachment;
+
+  // Build the payload for this scan, or reuse the last one (Re-check).
+  let payload, displayLabel;
+  if (text || file) {
+    payload = { input: text };
+    displayLabel = text;
+    if (file) {
+      try {
+        const dataUrl = await readFileAsDataURL(file);
+        payload.image = String(dataUrl).split(',')[1];   // strip "data:...;base64,"
+        payload.image_type = file.type || 'image/png';
+        payload.filename = file.name || 'upload';
+        displayLabel = '🖼️ ' + payload.filename + (text ? ' — ' + text : '');
+      } catch (e) {
+        console.warn('[scan] could not read image', e);
+      }
+    }
+    lastScan = payload;
+  } else if (lastScan) {
+    payload = lastScan;
+    displayLabel = payload.filename ? ('🖼️ ' + payload.filename) : payload.input;
+  } else {
+    const active = document.querySelector('.screen.active');
+    const ta = active && active.querySelector('.composer-textarea');
+    if (ta) { ta.focus(); ta.placeholder = 'Paste a URL, type a claim, or attach an image first…'; }
+    return;
+  }
+
+  // Show what's being analysed on the loading screen.
+  const pill = document.getElementById('loading-pill');
+  if (pill) pill.textContent = displayLabel && displayLabel.length > 90
+    ? displayLabel.slice(0, 90) + '…' : (displayLabel || 'Analyzing…');
+  goto('screen-loading');
+
+  const startedAt = Date.now();
+  let report;
+  try {
+    const res = await fetch(`${BACKEND_URL}/scan`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    });
+    if (!res.ok) throw new Error('bad status ' + res.status);
+    report = await res.json();
+    if (report.error) throw new Error(report.error);
+  } catch (err) {
+    console.warn('[scan] backend unavailable, using local engine:', err.message);
+    report = heuristicScanJS(payload);
+  }
+
+  const elapsed = Date.now() - startedAt;
+  setTimeout(() => {
+    renderResult(report);
+    goto('screen-result-high');
+  }, Math.max(0, 1200 - elapsed));
+}
+
+// Paint a report object into the result screen.
+function renderResult(r) {
+  const level = r.verdict === 'credible' ? 'high'
+              : r.verdict === 'uncertain' ? 'mid' : 'low';
+
+  const setClass = (id, base) => {
+    const el = document.getElementById(id);
+    if (el) el.className = `${base} ${level}`;
+  };
+  const setText = (id, txt) => {
+    const el = document.getElementById(id);
+    if (el) el.textContent = txt;
+  };
+  const barColor = v => v >= 70 ? 'var(--green)' : v >= 40 ? 'var(--yellow)' : 'var(--red)';
+
+  setClass('rc-card', 'score-card');
+  setClass('rc-circle', 'score-circle');
+  setClass('rc-label', 'score-label');
+
+  setText('rc-circle', r.score);
+  setText('rc-label', r.label);
+  setText('rc-desc', r.desc);
+
+  const numEl = document.getElementById('rc-num');
+  if (numEl) {
+    numEl.innerHTML =
+      `${r.score}<span style="font-size:18px;font-weight:400;color:var(--text3)">/100</span>`;
+  }
+
+  // Tags
+  const tagWrap = document.getElementById('rc-tags');
+  if (tagWrap) {
+    tagWrap.innerHTML = '';
+    (r.tags || []).forEach(t => {
+      const span = document.createElement('span');
+      span.className = `tag ${t.kind || 'gray'}`;
+      span.textContent = t.text;
+      tagWrap.appendChild(span);
+    });
+  }
+
+  // Overall bar + confidence
+  const ob = document.getElementById('rc-bar-overall');
+  if (ob) { ob.style.width = r.score + '%'; ob.style.background = barColor(r.score); }
+  setText('rc-val-overall', r.score + '%');
+  setText('rc-confidence', (r.confidence != null ? r.confidence : '—') + '%');
+
+  // Dynamic breakdown rows (labels adapt to input type)
+  const rows = document.getElementById('rc-breakdown-rows');
+  if (rows) {
+    rows.innerHTML = '';
+    (r.breakdown || []).forEach(dim => {
+      const v = typeof dim.value === 'number' ? dim.value : 0;
+      const row = document.createElement('div');
+      row.className = 'cred-row';
+      row.innerHTML =
+        `<span class="cred-key">${escapeHtml(dim.label)}</span>` +
+        `<div class="cred-bar"><div class="cred-fill" style="width:${v}%;background:${barColor(v)}"></div></div>` +
+        `<span class="cred-val">${v}%</span>`;
+      rows.appendChild(row);
+    });
+  }
+
+  // Dynamic details list
+  const det = document.getElementById('rc-details');
+  if (det) {
+    det.innerHTML = '';
+    (r.details || []).forEach(d => {
+      const row = document.createElement('div');
+      row.className = 'detail-row';
+      const colorClass = d.color ? ` ${d.color}` : '';
+      row.innerHTML =
+        `<span class="dk">${escapeHtml(d.label)}</span>` +
+        `<span class="dv${colorClass}">${escapeHtml(String(d.value))}</span>`;
+      det.appendChild(row);
+    });
+  }
+  const detTitle = document.getElementById('rc-details-title');
+  if (detTitle) {
+    detTitle.textContent = r.input_type === 'Image' ? 'Image details'
+                         : r.input_type === 'Article' ? 'Source details'
+                         : 'Details';
+  }
+
+  setText('rc-summary', r.summary || '');
+  const engineLabel = r.engine === 'groq' ? 'Analysis by Llama (Groq)'
+                    : r.engine === 'gemini' ? 'Analysis by Gemini'
+                    : 'Signal-based analysis';
+  setText('rc-engine', engineLabel);
+}
+
+function escapeHtml(s) {
+  return String(s).replace(/[&<>"']/g, c =>
+    ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+}
+
+// ── Local fallback scorer (mirrors the backend heuristic) ──────
+// Runs entirely in the browser when the FastAPI backend isn't reachable, so
+// the scan always returns a real, input-dependent result. Accepts the same
+// payload object runScan sends: { input, image?, filename? }.
+function heuristicScanJS(payload) {
+  const clamp = n => Math.max(0, Math.min(100, Math.round(n)));
+  const text = (payload && payload.input || '').trim();
+  const hasImage = !!(payload && payload.image);
+  const filename = (payload && payload.filename) || '';
+
+  const KNOWN_FALSE = [
+    [/\beinstein\b.*\bmoon\b|\bmoon\b.*\beinstein\b/i, 'Historically impossible — Einstein died in 1955, before any Moon landing'],
+    [/\bflat\s+earth\b/i, 'Contradicts established science'],
+    [/vaccines?\s+cause\s+autism/i, 'Debunked medical claim'],
+    [/5\s?g\b.*(covid|corona)/i, 'Debunked conspiracy theory'],
+    [/(covid|corona).*\bhoax\b/i, 'Debunked conspiracy theory'],
+    [/climate\s+change.*\bhoax\b/i, 'Contradicts scientific consensus'],
+    [/\bmoon\s+landing\b.*\b(fake|hoax|staged)\b/i, 'Debunked conspiracy theory'],
+  ];
+  const matchFalse = s => { for (const [re, why] of KNOWN_FALSE) if (re.test(s || '')) return why; return null; };
+
+  const verdictOf = score => score >= 70
+    ? { verdict: 'credible', label: 'Credible', desc: 'Strong credibility markers detected.' }
+    : score >= 40
+    ? { verdict: 'uncertain', label: 'Uncertain', desc: 'Mixed signals — verify with other sources.' }
+    : { verdict: 'not_credible', label: 'Not credible', desc: 'High likelihood of misinformation.' };
+
+  const assemble = (score, confidence, inputType, breakdown, details, tags, summary) => {
+    const v = verdictOf(score);
+    const full = [
+      { label: 'Input type', value: inputType },
+      { label: 'Assessment confidence', value: clamp(confidence) + '%' },
+    ].concat(details);
+    return { score: clamp(score), confidence: clamp(confidence), input_type: inputType,
+             verdict: v.verdict, label: v.label, desc: v.desc,
+             breakdown, details: full, tags, summary, engine: 'heuristic' };
+  };
+
+  // ---- IMAGE ----
+  if (hasImage) {
+    const hay = (filename + ' ' + text).toLowerCase();
+    const AI_HINTS = ['ai-generated', 'aigenerated', 'aigen', 'midjourney', 'dalle', 'dall-e',
+      'stable-diffusion', 'stablediffusion', 'sora', 'deepfake', 'synthetic', 'generated'];
+    const aiHit = AI_HINTS.some(h => hay.includes(h));
+    const knownFalse = matchFalse(text) || matchFalse(filename);
+    let score, confidence, auth, plaus, consist, prov, summary, tags;
+    if (aiHit || knownFalse) {
+      score = 10; confidence = 75; auth = 8; plaus = knownFalse ? 10 : 25; consist = 20; prov = 15;
+      summary = 'Signals indicate this image is likely AI-generated or fabricated'
+        + (knownFalse ? ' — ' + knownFalse + '.' : ' (based on its filename/caption).')
+        + ' Enable the Groq vision engine (set GROQ_API_KEY) for a full pixel-level analysis.';
+      tags = [{ text: '🖼️ Image', kind: 'gray' }, { text: '✗ Likely AI-generated / fabricated', kind: 'red' }];
+    } else {
+      score = 45; confidence = 20; auth = 45; plaus = 50; consist = 45; prov = 30;
+      summary = "Image authenticity can't be verified without the AI vision engine. "
+        + 'Enable Groq (set GROQ_API_KEY) so Credify can inspect the pixels for AI-generation, '
+        + 'manipulation, and scene plausibility. Until then this is an unverified estimate, not a confirmation.';
+      tags = [{ text: '🖼️ Image', kind: 'gray' }, { text: '⚠ Not verified (AI engine off)', kind: 'yellow' }];
+    }
+    const breakdown = [
+      { label: 'Authenticity', value: auth },
+      { label: 'Scene plausibility', value: plaus },
+      { label: 'Visual consistency', value: consist },
+      { label: 'Provenance', value: prov },
+    ];
+    const details = [];
+    if (filename) details.push({ label: 'File', value: filename });
+    if (text) details.push({ label: 'Caption', value: text.slice(0, 80) });
+    return assemble(score, confidence, 'Image', breakdown, details, tags, summary);
+  }
+
+  // ---- ARTICLE / TEXT ----
+  const isUrl = /^https?:\/\/\S+$/i.test(text) ||
+                (/^[\w-]+(\.[\w-]+)+(\/\S*)?$/.test(text) && !/\s/.test(text));
+  const CREDIBLE = {
+    'abs-cbn.com': ['ABS-CBN News', 'Center-left'], 'gmanetwork.com': ['GMA News', 'Center'],
+    'rappler.com': ['Rappler', 'Center-left'], 'inquirer.net': ['Inquirer', 'Center'],
+    'philstar.com': ['Philippine Star', 'Center'], 'reuters.com': ['Reuters', 'Center'],
+    'apnews.com': ['Associated Press', 'Center'], 'bbc.com': ['BBC', 'Center'],
+    'nytimes.com': ['New York Times', 'Center-left'], 'verafiles.org': ['VERA Files', 'Center'],
+  };
+  const SATIRE = {
+    'theonion.com': ['The Onion (satire)', 'Satire'],
+    'adobo-chronicles.com': ['Adobo Chronicles (satire)', 'Satire'],
+    'babylonbee.com': ['The Babylon Bee (satire)', 'Satire'],
+  };
+  const CLICKBAIT = [/you won'?t believe/i, /shocking/i, /doctors hate/i, /miracle (cure|drug|remedy)/i,
+    /share (this )?before/i, /gone viral/i, /will blow your mind/i, /the truth about/i, /exposed!?/i, /one weird trick/i];
+  const SENSATIONAL = ['hoax', 'coverup', 'cover-up', 'conspiracy', 'plandemic', 'microchip', 'sheeple', 'wake up', 'false flag'];
+  const ATTRIB = ['according to', 'said', 'reported', 'study', 'research', 'data', 'official', 'confirmed', 'cited', 'statement'];
+
+  const lower = text.toLowerCase();
+  const words = (text.match(/[A-Za-z']+/g) || []);
+  const wc = Math.max(1, words.length);
+  const knownFalse = matchFalse(text);
+
+  let domain = '', publisher = 'No source provided', bias = 'Unknown', domainAge = '—';
+  if (isUrl) {
+    try { domain = new URL(text.startsWith('http') ? text : 'https://' + text).hostname.replace(/^www\./, '').toLowerCase(); }
+    catch (e) { domain = text.split('/')[0].replace(/^www\./, '').toLowerCase(); }
+  }
+
+  let source;
+  if (CREDIBLE[domain]) { source = 92; [publisher, bias] = CREDIBLE[domain]; domainAge = 'Established outlet'; }
+  else if (SATIRE[domain]) { source = 12; [publisher, bias] = SATIRE[domain]; domainAge = 'Satire / flagged'; }
+  else if (domain) {
+    source = 50; publisher = domain;
+    if (/blogspot\.|wordpress\.com|medium\.com|\.tumblr\.com|facebook\.com|t\.me|tiktok\.com/.test(domain)) { source -= 18; publisher = domain + ' (self-published)'; }
+    if (!/^https/i.test(text)) source -= 6;
+    if ((domain.match(/[-0-9]/g) || []).length >= 4) source -= 8;
+    if (['gov', 'edu', 'int'].includes(domain.split('.').pop())) source += 15;
+  } else { source = 42; }
+
+  let factual = 62;
+  const clickHits = CLICKBAIT.filter(re => re.test(lower)).length;
+  const sensHits = SENSATIONAL.filter(w => lower.includes(w)).length;
+  factual -= clickHits * 12 + sensHits * 10;
+  const capsRatio = words.filter(w => w.length >= 3 && w === w.toUpperCase()).length / wc;
+  if (capsRatio > 0.12) factual -= 16; else if (capsRatio > 0.05) factual -= 7;
+  const exclaims = (text.match(/!/g) || []).length;
+  if (exclaims >= 4) factual -= 12; else if (exclaims >= 2) factual -= 5;
+  if (knownFalse) factual = Math.min(factual, 8);
+
+  let neutral = 76 - sensHits * 10 - clickHits * 6;
+  if (capsRatio > 0.08) neutral -= 12;
+
+  let verify = 40;
+  verify += Math.min(ATTRIB.filter(a => lower.includes(a)).length * 8, 32);
+  if (isUrl || /https?:\/\//.test(text)) verify += 8;
+  if (wc < 12 && !isUrl) verify -= 10;
+  if (CREDIBLE[domain]) verify += 16;
+
+  source = clamp(source); factual = clamp(factual); neutral = clamp(neutral); verify = clamp(verify);
+  let score = isUrl
+    ? 0.38 * source + 0.30 * factual + 0.14 * neutral + 0.18 * verify
+    : 0.22 * source + 0.46 * factual + 0.14 * neutral + 0.18 * verify;
+  if (SATIRE[domain]) score = Math.min(score, 28);
+  if (knownFalse) score = Math.min(score, 12);
+  score = clamp(score);
+
+  let confidence = 45;
+  if (CREDIBLE[domain] || SATIRE[domain]) confidence += 30;
+  if (knownFalse) confidence = 88;
+  if (clickHits || sensHits) confidence += 12;
+  if (!domain && wc < 10) confidence -= 15;
+  confidence = clamp(confidence);
+
+  const breakdown = isUrl ? [
+    { label: 'Source reliability', value: source },
+    { label: 'Factual accuracy', value: factual },
+    { label: 'Neutrality', value: neutral },
+    { label: 'Transparency', value: verify },
+  ] : [
+    { label: 'Factual plausibility', value: factual },
+    { label: 'Attribution', value: verify },
+    { label: 'Neutrality', value: neutral },
+    { label: 'Source reliability', value: source },
+  ];
+
+  const details = [{ label: 'Publisher', value: publisher }];
+  if (isUrl) details.push({ label: 'Domain', value: domain || '—' }, { label: 'Bias', value: bias });
+
+  const tags = [{ text: isUrl ? '🔗 Article' : '📝 Text claim', kind: 'gray' }];
+  if (source >= 80) tags.push({ text: '✓ Reputable source', kind: 'green' });
+  else if (source < 35 && domain) tags.push({ text: '✗ Unverified source', kind: 'red' });
+  if (knownFalse) tags.push({ text: '✗ Matches known false claim', kind: 'red' });
+  if (clickHits) tags.push({ text: '⚠ Clickbait language', kind: 'yellow' });
+  if (sensHits) tags.push({ text: '⚠ Sensational wording', kind: 'yellow' });
+  if (bias === 'Satire') tags.push({ text: '✗ Satire / parody', kind: 'red' });
+
+  const bits = [];
+  if (knownFalse) bits.push('This matches a known false or debunked claim: ' + knownFalse + '.');
+  else if (score >= 70) bits.push(publisher + ' shows strong credibility signals.');
+  else if (score >= 40) bits.push('The signals here are mixed — nothing confirms or debunks it outright.');
+  else bits.push('Several warning signs typical of low-quality or misleading content were found.');
+  if (clickHits || sensHits) bits.push('The wording leans on emotional or clickbait-style language.');
+  if (verify < 45 && !knownFalse) bits.push('Little sourcing or attribution was detected.');
+  if (confidence < 45) bits.push('Confidence is low because there was little to go on — treat this as a rough estimate.');
+  bits.push('This is an automated signal-based estimate; cross-check important claims with trusted fact-checkers.');
+
+  return assemble(score, confidence, isUrl ? 'Article' : 'Text claim', breakdown, details, tags, bits.join(' '));
 }
 
 // ── File attachment ────────────────────────────────────────────
@@ -139,12 +507,18 @@ function addAttachmentChip(file, container) {
   remove.className = 'attachment-remove';
   remove.innerHTML = '×';
   remove.title = 'Remove';
-  remove.onclick = () => chip.remove();
+  remove.onclick = () => {
+    chip.remove();
+    if (scanAttachment === file) scanAttachment = null;
+  };
 
   chip.innerHTML = icon;
   chip.appendChild(name);
   chip.appendChild(remove);
   container.appendChild(chip);
+
+  // Remember the most recent image so runScan can actually analyze it.
+  if (isImage) scanAttachment = file;
 }
 
 // ── Handle paste events for URLs / images ──────────────────────
@@ -247,6 +621,36 @@ const Auth = {
   isLoggedIn() { return !!this.token; }
 };
 
+// Pending flows (kept in memory between screens)
+let pendingSignup = null;  // { email, password } awaiting OTP verification
+let resetEmail = '';       // email awaiting password-reset OTP
+
+// ── Guest guards ───────────────────────────────────────────────
+// History and account settings require a real account. Guests are sent
+// to the login screen with a short explanation.
+function openHistory() {
+  if (Auth.isLoggedIn()) {
+    goto('screen-history');
+  } else {
+    goto('screen-login');
+    showError('login-error', 'Please sign in to view your history.');
+  }
+}
+
+function openProfile() {
+  if (Auth.isLoggedIn()) {
+    goto('screen-profile');
+  } else {
+    goto('screen-login');
+    showError('login-error', 'Please sign in to access your account.');
+  }
+}
+
+// Keep OTP inputs to 6 digits only.
+function onlyDigits(el) {
+  el.value = el.value.replace(/\D/g, '').slice(0, 6);
+}
+
 function showError(elementId, message) {
   const el = document.getElementById(elementId);
   if (el) el.textContent = message;
@@ -257,7 +661,7 @@ function clearError(elementId) {
   if (el) el.textContent = '';
 }
 
-// ── Register ───────────────────────────────────────────────────
+// ── Register (step 1: send OTP) ────────────────────────────────
 async function handleRegister() {
   const account_name = document.querySelector('#screen-register input[type="text"]').value.trim();
   const email        = document.querySelector('#screen-register input[type="email"]').value.trim();
@@ -277,10 +681,12 @@ async function handleRegister() {
   }
 
   const btn = document.querySelector('#screen-register .btn-submit');
-  btn.textContent = 'Creating account…';
+  const orig = btn.innerHTML;
+  btn.textContent = 'Sending code…';
   btn.disabled = true;
 
   try {
+    // Creates the user (unconfirmed) and emails a 6-digit code.
     const { data, error } = await sbClient.auth.signUp({
       email,
       password,
@@ -291,12 +697,180 @@ async function handleRegister() {
       showError('register-error', error.message); return;
     }
 
-    goto('screen-login');
-    showError('login-error', '✓ Account created! Please sign in.');
+    // If email confirmations are OFF in Supabase, a session is returned right
+    // away and there is no code to enter — just log the user in.
+    if (data.session) {
+      Auth.token = data.session.access_token;
+      Auth.user  = data.user;
+      updateAvatar(email);
+      goto('screen-home-auth');
+      return;
+    }
+
+    // Otherwise: move to the OTP screen to finish account creation.
+    pendingSignup = { email, password };
+    const target = document.getElementById('otp-target-email');
+    if (target) target.textContent = email;
+    document.getElementById('otp-code').value = '';
+    clearError('otp-error');
+    goto('screen-otp');
   } catch (err) {
     showError('register-error', 'Could not connect to Supabase. Is it running?');
   } finally {
-    btn.textContent = 'Create account';
+    btn.innerHTML = orig;
+    btn.disabled = false;
+  }
+}
+
+// ── Register (step 2: verify OTP → account created) ────────────
+async function verifySignupOtp() {
+  const token = document.getElementById('otp-code').value.trim();
+  clearError('otp-error');
+
+  if (!pendingSignup || !pendingSignup.email) {
+    showError('otp-error', 'Session expired — please sign up again.'); return;
+  }
+  if (token.length !== 6) {
+    showError('otp-error', 'Please enter the 6-digit code.'); return;
+  }
+
+  const btn = document.querySelector('#screen-otp .btn-submit');
+  const orig = btn.innerHTML;
+  btn.textContent = 'Verifying…';
+  btn.disabled = true;
+
+  try {
+    // 'signup' is the standard type for confirming a new account; some
+    // Supabase versions label the same code 'email', so we fall back to it.
+    let { data, error } = await sbClient.auth.verifyOtp({
+      email: pendingSignup.email,
+      token,
+      type: 'signup'
+    });
+    if (error) {
+      const retry = await sbClient.auth.verifyOtp({
+        email: pendingSignup.email,
+        token,
+        type: 'email'
+      });
+      data = retry.data;
+      error = retry.error;
+    }
+
+    if (error) {
+      showError('otp-error', error.message || 'Invalid or expired code.'); return;
+    }
+
+    // Verified — the account now exists and we're signed in.
+    if (data.session) {
+      Auth.token = data.session.access_token;
+      Auth.user  = data.user;
+    }
+    if (data.user) updateAvatar(data.user.email);
+    pendingSignup = null;
+    goto('screen-home-auth');
+  } catch (err) {
+    showError('otp-error', 'Could not connect to Supabase. Is it running?');
+  } finally {
+    btn.innerHTML = orig;
+    btn.disabled = false;
+  }
+}
+
+async function resendSignupOtp() {
+  if (!pendingSignup || !pendingSignup.email) return;
+  const link = document.getElementById('otp-resend');
+  const orig = link ? link.textContent : '';
+  if (link) link.textContent = 'Sending…';
+  try {
+    const { error } = await sbClient.auth.resend({
+      type: 'signup',
+      email: pendingSignup.email
+    });
+    showError('otp-error', error ? error.message : '✓ New code sent.');
+  } catch (e) {
+    showError('otp-error', 'Could not resend. Is Supabase running?');
+  } finally {
+    if (link) setTimeout(() => { link.textContent = orig; }, 1500);
+  }
+}
+
+// ── Forgot password (step 1: send reset code) ──────────────────
+async function sendResetCode() {
+  const onReset = document.getElementById('screen-reset').classList.contains('active');
+  const email = onReset
+    ? resetEmail
+    : document.getElementById('forgot-email').value.trim();
+  const errId = onReset ? 'reset-error' : 'forgot-error';
+  clearError(errId);
+
+  if (!email) { showError(errId, 'Please enter your email.'); return; }
+
+  const btn = onReset ? null : document.querySelector('#screen-forgot .btn-submit');
+  let orig;
+  if (btn) { orig = btn.innerHTML; btn.textContent = 'Sending…'; btn.disabled = true; }
+
+  try {
+    const { error } = await sbClient.auth.resetPasswordForEmail(email);
+    if (error) { showError(errId, error.message); return; }
+
+    resetEmail = email;
+    if (!onReset) {
+      const target = document.getElementById('reset-target-email');
+      if (target) target.textContent = email;
+      document.getElementById('reset-code').value = '';
+      document.getElementById('reset-pass').value = '';
+      clearError('reset-error');
+      goto('screen-reset');
+    } else {
+      showError('reset-error', '✓ New code sent.');
+    }
+  } catch (e) {
+    showError(errId, 'Could not connect to Supabase. Is it running?');
+  } finally {
+    if (btn) { btn.innerHTML = orig; btn.disabled = false; }
+  }
+}
+
+// ── Forgot password (step 2: verify code + set new password) ───
+async function resetPassword() {
+  const token = document.getElementById('reset-code').value.trim();
+  const newPass = document.getElementById('reset-pass').value;
+  clearError('reset-error');
+
+  if (!resetEmail) { showError('reset-error', 'Session expired — start over.'); return; }
+  if (token.length !== 6) { showError('reset-error', 'Please enter the 6-digit code.'); return; }
+  if (newPass.length < 6) { showError('reset-error', 'Password must be at least 6 characters.'); return; }
+
+  const btn = document.querySelector('#screen-reset .btn-submit');
+  const orig = btn.innerHTML;
+  btn.textContent = 'Updating…';
+  btn.disabled = true;
+
+  try {
+    // Verifying a recovery OTP signs the user in temporarily…
+    const { error: vErr } = await sbClient.auth.verifyOtp({
+      email: resetEmail,
+      token,
+      type: 'recovery'
+    });
+    if (vErr) { showError('reset-error', vErr.message || 'Invalid or expired code.'); return; }
+
+    // …which lets us set the new password.
+    const { error: uErr } = await sbClient.auth.updateUser({ password: newPass });
+    if (uErr) { showError('reset-error', uErr.message); return; }
+
+    // Sign out of the recovery session so they log in fresh.
+    await sbClient.auth.signOut();
+    Auth.token = null;
+    Auth.user = null;
+    resetEmail = '';
+    goto('screen-login');
+    showError('login-error', '✓ Password updated! Please sign in.');
+  } catch (e) {
+    showError('reset-error', 'Could not connect to Supabase. Is it running?');
+  } finally {
+    btn.innerHTML = orig;
     btn.disabled = false;
   }
 }

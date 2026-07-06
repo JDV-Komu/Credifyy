@@ -1,0 +1,18 @@
+<!DOCTYPE html>
+<html>
+  <body style="font-family: Arial, Helvetica, sans-serif; background:#0f0f14; color:#e7e7ee; padding:32px;">
+    <div style="max-width:440px; margin:0 auto; background:#17171f; border:1px solid #2a2a36; border-radius:16px; padding:32px;">
+      <h2 style="margin:0 0 8px; color:#ffffff;">Verify your email</h2>
+      <p style="margin:0 0 24px; color:#9a9aa8; font-size:14px;">
+        Enter this 6-digit code in Credify to finish creating your account.
+      </p>
+      <div style="font-size:34px; font-weight:700; letter-spacing:10px; text-align:center;
+                  color:#A78BFA; background:#1f1f2b; border-radius:12px; padding:18px 0;">
+        {{ .Token }}
+      </div>
+      <p style="margin:24px 0 0; color:#6f6f7d; font-size:12px;">
+        This code expires in 1 hour. If you didn't request it, you can ignore this email.
+      </p>
+    </div>
+  </body>
+</html>

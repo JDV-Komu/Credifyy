@@ -59,7 +59,7 @@
           </div>
           <div class="composer-right">
             <span class="composer-hint" id="composer-hint">Press ⏎ to analyze</span>
-            <button class="composer-send" id="send-btn" onclick="goto('screen-loading')" title="Analyze">
+            <button class="composer-send" id="send-btn" onclick="runScan()" title="Analyze">
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
                 <line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/>
               </svg>
@@ -120,7 +120,7 @@
       <div class="field-group">
         <div class="field-label-row">
           <label class="field-label">Password</label>
-          <span class="form-link-small">Forgot password?</span>
+          <span class="form-link-small" onclick="goto('screen-forgot')" style="cursor:pointer">Forgot password?</span>
         </div>
         <div class="password-wrap">
           <input type="password" class="field-input" placeholder="••••••••" id="login-pass" autocomplete="current-password"/>
@@ -236,14 +236,112 @@
   </main>
 </div>
 
+<!-- ========== SCREEN: OTP VERIFY (signup) ========== -->
+<div class="screen" id="screen-otp">
+  <nav class="navbar">
+    <div class="logo" onclick="goto('screen-home')" style="cursor:pointer">Credify</div>
+    <button class="btn-ghost" onclick="goto('screen-login')">Sign in</button>
+  </nav>
+  <div class="hero-bg"><div class="grid-overlay"></div><div class="glow-blob" style="opacity:0.35"></div></div>
+  <main class="form-section">
+    <div class="form-card">
+      <div class="form-logo-mark">C</div>
+      <h2 class="form-title">Verify your email</h2>
+      <p class="form-sub">Enter the 6-digit code we sent to <span id="otp-target-email" style="color:var(--text2)">your email</span></p>
+
+      <div class="field-group">
+        <label class="field-label">Verification code</label>
+        <input type="text" inputmode="numeric" maxlength="6" class="field-input otp-input" id="otp-code" placeholder="000000" autocomplete="one-time-code" oninput="onlyDigits(this)"/>
+      </div>
+
+      <p class="form-error" id="otp-error"></p>
+      <button class="btn-submit" onclick="verifySignupOtp()">
+        Verify &amp; create account
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>
+      </button>
+
+      <p class="form-footnote">Didn't get the code? <span class="form-link" id="otp-resend" onclick="resendSignupOtp()">Resend code</span></p>
+      <p class="form-footnote" style="margin-top:6px"><span class="form-link dim" onclick="goto('screen-register')">← Back</span></p>
+    </div>
+  </main>
+</div>
+
+<!-- ========== SCREEN: FORGOT PASSWORD (enter email) ========== -->
+<div class="screen" id="screen-forgot">
+  <nav class="navbar">
+    <div class="logo" onclick="goto('screen-home')" style="cursor:pointer">Credify</div>
+    <button class="btn-ghost" onclick="goto('screen-login')">Sign in</button>
+  </nav>
+  <div class="hero-bg"><div class="grid-overlay"></div><div class="glow-blob" style="opacity:0.35"></div></div>
+  <main class="form-section">
+    <div class="form-card">
+      <div class="form-logo-mark">C</div>
+      <h2 class="form-title">Reset your password</h2>
+      <p class="form-sub">Enter your email and we'll send you a reset code</p>
+
+      <div class="field-group">
+        <label class="field-label">Email address</label>
+        <input type="email" class="field-input" id="forgot-email" placeholder="you@example.com" autocomplete="email"/>
+      </div>
+
+      <p class="form-error" id="forgot-error"></p>
+      <button class="btn-submit" onclick="sendResetCode()">
+        Send reset code
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>
+      </button>
+
+      <p class="form-footnote"><span class="form-link" onclick="goto('screen-login')">← Back to sign in</span></p>
+    </div>
+  </main>
+</div>
+
+<!-- ========== SCREEN: RESET PASSWORD (code + new password) ========== -->
+<div class="screen" id="screen-reset">
+  <nav class="navbar">
+    <div class="logo" onclick="goto('screen-home')" style="cursor:pointer">Credify</div>
+    <button class="btn-ghost" onclick="goto('screen-login')">Sign in</button>
+  </nav>
+  <div class="hero-bg"><div class="grid-overlay"></div><div class="glow-blob" style="opacity:0.35"></div></div>
+  <main class="form-section">
+    <div class="form-card">
+      <div class="form-logo-mark">C</div>
+      <h2 class="form-title">Set a new password</h2>
+      <p class="form-sub">Enter the 6-digit code we sent to <span id="reset-target-email" style="color:var(--text2)">your email</span></p>
+
+      <div class="field-group">
+        <label class="field-label">Verification code</label>
+        <input type="text" inputmode="numeric" maxlength="6" class="field-input otp-input" id="reset-code" placeholder="000000" autocomplete="one-time-code" oninput="onlyDigits(this)"/>
+      </div>
+
+      <div class="field-group">
+        <label class="field-label">New password</label>
+        <div class="password-wrap">
+          <input type="password" class="field-input" id="reset-pass" placeholder="Create a new password" autocomplete="new-password"/>
+          <button class="eye-btn" onclick="togglePass('reset-pass', this)" tabindex="-1">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+          </button>
+        </div>
+      </div>
+
+      <p class="form-error" id="reset-error"></p>
+      <button class="btn-submit" onclick="resetPassword()">
+        Update password
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>
+      </button>
+
+      <p class="form-footnote">Didn't get the code? <span class="form-link" onclick="sendResetCode()">Resend</span></p>
+    </div>
+  </main>
+</div>
+
 <!-- ========== SCREEN 4: HOME AUTHENTICATED ========== -->
 <div class="screen" id="screen-home-auth">
   <nav class="navbar">
     <div class="logo">Credify</div>
     <div class="nav-right">
-      <button class="btn-ghost" onclick="goto('screen-history')">History</button>
+      <button class="btn-ghost" onclick="openHistory()">History</button>
       <button class="btn-ghost" onclick="goto('screen-trends')">Trends</button>
-      <div class="avatar" onclick="goto('screen-profile')">V</div>
+      <div class="avatar" onclick="openProfile()">V</div>
     </div>
   </nav>
 
@@ -284,7 +382,7 @@
           </div>
           <div class="composer-right">
             <span class="composer-hint">Press ⏎ to analyze</span>
-            <button class="composer-send" onclick="goto('screen-loading')" title="Analyze">
+            <button class="composer-send" onclick="runScan()" title="Analyze">
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
                 <line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/>
               </svg>
@@ -309,23 +407,20 @@
 <div class="screen" id="screen-loading">
   <nav class="navbar">
     <div class="logo">Credify</div>
-    <div class="avatar" onclick="goto('screen-profile')">V</div>
+    <div class="avatar" onclick="openProfile()">V</div>
   </nav>
   <main class="loading-section">
-    <div class="submitted-pill">https://abs-cbn.com/focus/04/03/18/macalintal-bongbong-marcos-allegations-are-fake-news</div>
+    <div class="submitted-pill" id="loading-pill">Analyzing your input…</div>
     <div class="spinner"></div>
     <h2 class="loading-title">Analyzing your source</h2>
     <p class="loading-sub">This usually takes a few seconds</p>
     <div class="steps-list">
-      <div class="step done"><div class="step-dot done"></div><span>Fetching content from URL</span></div>
+      <div class="step done"><div class="step-dot done"></div><span>Reading your input</span></div>
       <div class="step done"><div class="step-dot done"></div><span>Identifying publisher and source</span></div>
-      <div class="step active"><div class="step-dot active"></div><span>Running AI credibility analysis...</span></div>
-      <div class="step pending"><div class="step-dot pending"></div><span>Cross-referencing related sources</span></div>
+      <div class="step active"><div class="step-dot active"></div><span>Running credibility analysis...</span></div>
+      <div class="step pending"><div class="step-dot pending"></div><span>Scoring signals</span></div>
       <div class="step pending"><div class="step-dot pending"></div><span>Generating your result</span></div>
     </div>
-    <button class="btn-primary" style="margin-top:32px;" onclick="goto('screen-result-high')">See result (98%)</button>
-    <button class="btn-ghost" style="margin-top:10px;" onclick="goto('screen-result-mid')">See result (56%)</button>
-    <button class="btn-ghost" style="margin-top:10px;" onclick="goto('screen-result-low')">See result (10%)</button>
   </main>
 </div>
 
@@ -334,19 +429,19 @@
   <nav class="navbar">
     <div class="logo">Credify</div>
     <div class="nav-right">
-      <button class="btn-ghost" onclick="goto('screen-home-auth')">New check</button>
-      <div class="avatar" onclick="goto('screen-profile')">V</div>
+      <button class="btn-ghost" onclick="newCheck()">New check</button>
+      <div class="avatar" onclick="openProfile()">V</div>
     </div>
   </nav>
   <main class="result-section">
-    <div class="score-card high">
-      <div class="score-circle high">98</div>
+    <div class="score-card high" id="rc-card">
+      <div class="score-circle high" id="rc-circle">98</div>
       <div class="score-info">
-        <span class="score-label high">Credible source</span>
-        <div class="score-num">98<span style="font-size:18px;font-weight:400;color:var(--text3)">/100</span></div>
-        <div class="score-desc">This source shows strong credibility markers</div>
+        <span class="score-label high" id="rc-label">Credible source</span>
+        <div class="score-num" id="rc-num">98<span style="font-size:18px;font-weight:400;color:var(--text3)">/100</span></div>
+        <div class="score-desc" id="rc-desc">This source shows strong credibility markers</div>
       </div>
-      <div class="tags-col">
+      <div class="tags-col" id="rc-tags">
         <span class="tag green">✓ Verified publisher</span>
         <span class="tag green">✓ Original reporting</span>
         <span class="tag gray">Mainstream media</span>
@@ -356,32 +451,24 @@
     <div class="two-col">
       <div class="info-box">
         <div class="box-title">Credibility breakdown</div>
-        <div class="cred-row"><span class="cred-key">Source reputation</span><div class="cred-bar"><div class="cred-fill" style="width:95%;background:var(--green)"></div></div></div>
-        <div class="cred-row"><span class="cred-key">Factual accuracy</span><div class="cred-bar"><div class="cred-fill" style="width:90%;background:var(--green)"></div></div></div>
-        <div class="cred-row"><span class="cred-key">Bias rating</span><div class="cred-bar"><div class="cred-fill" style="width:78%;background:var(--yellow)"></div></div></div>
-        <div class="cred-row"><span class="cred-key">Transparency</span><div class="cred-bar"><div class="cred-fill" style="width:88%;background:var(--green)"></div></div></div>
+        <div class="cred-row"><span class="cred-key" style="font-weight:600;color:var(--text2)">Overall credibility</span><div class="cred-bar" style="height:6px"><div class="cred-fill" id="rc-bar-overall" style="width:0%;background:var(--green)"></div></div><span class="cred-val" id="rc-val-overall">0%</span></div>
+        <div class="conf-note">Assessment confidence: <span id="rc-confidence">—</span></div>
+        <div style="height:1px;background:var(--border);margin:10px 0 14px"></div>
+        <div id="rc-breakdown-rows"></div>
       </div>
       <div class="info-box">
-        <div class="box-title">Source details</div>
-        <div class="detail-row"><span class="dk">Publisher</span><span class="dv">ABS-CBN News</span></div>
-        <div class="detail-row"><span class="dk">Domain age</span><span class="dv">22 years</span></div>
-        <div class="detail-row"><span class="dk">MBFC rating</span><span class="dv green">High factual</span></div>
-        <div class="detail-row"><span class="dk">Bias</span><span class="dv yellow">Center-left</span></div>
-        <div class="detail-row"><span class="dk">Input type</span><span class="dv">URL</span></div>
+        <div class="box-title" id="rc-details-title">Details</div>
+        <div id="rc-details"></div>
       </div>
     </div>
 
     <div class="info-box" style="margin-bottom:20px">
-      <div class="box-title">AI analysis summary</div>
-      <div class="box-text">ABS-CBN News is a well-established Philippine broadcaster with over two decades of digital presence. The article cites named primary sources and includes verifiable legal documents. Cross-referencing with other reputable outlets confirms the core claims. No significant factual discrepancies were detected.</div>
+      <div class="box-title">Analysis summary <span id="rc-engine" style="font-size:11px;font-weight:400;color:var(--text3);text-transform:none;letter-spacing:0">Signal-based analysis</span></div>
+      <div class="box-text" id="rc-summary">—</div>
     </div>
 
-    <div class="articles-grid">
-      <div class="article-card"><span class="art-src">Rappler</span><div class="art-title">Macalintal files disqualification case vs Marcos in poll body</div></div>
-      <div class="article-card"><span class="art-src">Inquirer</span><div class="art-title">Lawyer explains Marcos tax case implications for candidacy</div></div>
-    </div>
     <div class="action-bar">
-      <button class="btn-recheck" onclick="goto('screen-loading')">↺ Re-check</button>
+      <button class="btn-recheck" onclick="runScan()">↺ Re-check</button>
       <button class="btn-share">↗ Share report</button>
       <button class="btn-outline-purple" onclick="goto('screen-flag')">⚑ Flag issue</button>
     </div>
@@ -393,8 +480,8 @@
   <nav class="navbar">
     <div class="logo">Credify</div>
     <div class="nav-right">
-      <button class="btn-ghost" onclick="goto('screen-home-auth')">New check</button>
-      <div class="avatar" onclick="goto('screen-profile')">V</div>
+      <button class="btn-ghost" onclick="newCheck()">New check</button>
+      <div class="avatar" onclick="openProfile()">V</div>
     </div>
   </nav>
   <main class="result-section">
@@ -428,8 +515,8 @@
   <nav class="navbar">
     <div class="logo">Credify</div>
     <div class="nav-right">
-      <button class="btn-ghost" onclick="goto('screen-home-auth')">New check</button>
-      <div class="avatar" onclick="goto('screen-profile')">V</div>
+      <button class="btn-ghost" onclick="newCheck()">New check</button>
+      <div class="avatar" onclick="openProfile()">V</div>
     </div>
   </nav>
   <main class="result-section">
@@ -464,7 +551,7 @@
     <div class="logo">Credify</div>
     <div class="nav-right">
       <button class="btn-ghost" onclick="goto('screen-home-auth')">← Back</button>
-      <div class="avatar" onclick="goto('screen-profile')">V</div>
+      <div class="avatar" onclick="openProfile()">V</div>
     </div>
   </nav>
   <main class="body-section">
@@ -517,7 +604,7 @@
     <div class="logo">Credify</div>
     <div class="nav-right">
       <button class="btn-ghost" onclick="goto('screen-home-auth')">← Back</button>
-      <div class="avatar" onclick="goto('screen-profile')">V</div>
+      <div class="avatar" onclick="openProfile()">V</div>
     </div>
   </nav>
   <main class="body-section">
@@ -538,7 +625,7 @@
 <div class="screen" id="screen-flag">
   <nav class="navbar">
     <div class="logo">Credify</div>
-    <div class="avatar" onclick="goto('screen-profile')">V</div>
+    <div class="avatar" onclick="openProfile()">V</div>
   </nav>
   <main class="modal-section">
     <div class="modal-card">
@@ -548,7 +635,7 @@
       <h2 class="modal-title">Report submitted</h2>
       <p class="modal-text">Thank you for helping keep Credify accurate. Your report has been recorded and will be reviewed for trend analysis.</p>
       <button class="btn-submit" onclick="goto('screen-result-high')">Back to results</button>
-      <button class="btn-ghost-full" style="margin-top:10px;" onclick="goto('screen-history')">View my reports</button>
+      <button class="btn-ghost-full" style="margin-top:10px;" onclick="openHistory()">View my reports</button>
     </div>
   </main>
 </div>

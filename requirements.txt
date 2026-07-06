@@ -1,0 +1,6 @@
+# Credify backend dependencies
+fastapi
+uvicorn[standard]
+python-dotenv
+supabase
+openai        # used for the Groq scan engine (OpenAI-compatible API)
