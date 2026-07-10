@@ -1,4 +1,5 @@
 import os
+from Credifyy.Backend.routers import account
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from dotenv import load_dotenv
@@ -9,7 +10,7 @@ print("URL:", os.getenv("SUPABASE_URL"))
 print("KEY:", os.getenv("SUPABASE_SERVICE_KEY"))
 
 #note to self: this should load AFTER load_dotenv function()
-from routers import account, scan
+from routers import scan
 app = FastAPI()
 app.include_router(account.router)
 app.include_router(scan.router)  # /scan credibility endpoint
