@@ -1,22 +1,14 @@
 import os
-from Credifyy.Backend.routers import account
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from dotenv import load_dotenv
 
-load_dotenv()
+load_dotenv()  # must run BEFORE importing routers that read env vars
 
-print("URL:", os.getenv("SUPABASE_URL"))
-print("KEY:", os.getenv("SUPABASE_SERVICE_KEY"))
+from routers import scan, account
 
-#note to self: this should load AFTER load_dotenv function()
-from routers import scan
 app = FastAPI()
-app.include_router(account.router)
-app.include_router(scan.router)  # /scan credibility endpoint
 
-# This allows your HTML file to talk to Python
-# Without this, the browser will block every request
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],  # tighten this in production
@@ -25,4 +17,5 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-app.include_router(account.router)  # register it
+app.include_router(scan.router)     # /scan credibility endpoint
+app.include_router(account.router)  # /account endpoints

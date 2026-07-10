@@ -834,6 +834,8 @@ button { cursor: pointer; font-family: 'Instrument Sans', sans-serif; border: no
 .otp-input { text-align: center; font-size: 26px; font-weight: 600; letter-spacing: 0.5em; padding-left: 0.5em; font-variant-numeric: tabular-nums; }
 .conf-note { font-size: 11px; color: var(--text3); margin: 6px 0 0; }
 .conf-note span { color: var(--text2); font-weight: 600; }
+/* Guests are not logged in — never show the account avatar to them. */
+body.guest .avatar { display: none; }
 
 .detail-row {
   display: flex;

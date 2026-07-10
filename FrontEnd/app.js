@@ -161,11 +161,17 @@ async function runScan() {
   const startedAt = Date.now();
   let report;
   try {
+    // Abort if the backend doesn't answer within 25s, so the loading screen
+    // can never get stuck — we fall back to the local heuristic instead.
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 25000);
     const res = await fetch(`${BACKEND_URL}/scan`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload)
+      body: JSON.stringify(payload),
+      signal: controller.signal
     });
+    clearTimeout(timer);
     if (!res.ok) throw new Error('bad status ' + res.status);
     report = await res.json();
     if (report.error) throw new Error(report.error);
@@ -589,6 +595,20 @@ function checkStrength(value) {
 }
 
 // ── Update avatar/profile UI after login ───────────────────────
+// Show the user's initial when logged in, a neutral icon for guests.
+// (The HTML used to hardcode a placeholder "V", which showed up even in
+//  guest sessions — e.g. on the Analyzing screen.)
+function refreshAvatars() {
+  if (Auth.isLoggedIn()) {
+    const email = Auth.user?.email || 'U';
+    updateAvatar(email);
+  } else {
+    document.querySelectorAll('.avatar, .profile-avatar').forEach(el => { el.textContent = '👤'; });
+    document.querySelectorAll('.profile-name').forEach(el => { el.textContent = 'Guest'; });
+    document.querySelectorAll('.profile-email').forEach(el => { el.textContent = 'Not signed in'; });
+  }
+}
+
 function updateAvatar(email) {
   const initial = email.charAt(0).toUpperCase();
   const name = Auth.user?.user_metadata?.account_name || email;
@@ -919,6 +939,7 @@ async function handleLogout() {
   } finally {
     Auth.token = null;
     Auth.user  = null;
+    refreshAvatars();
     goto('screen-login');
   }
 }
@@ -1162,3 +1183,6 @@ async function deleteAccount() {
 //   document.querySelectorAll(".profile-email").forEach(el => el.innerHTML = email);
 //   console.log("HELP ME")
 // }
+
+// Initialize avatars for the current (guest) session on page load.
+refreshAvatars();
