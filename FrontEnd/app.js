@@ -645,6 +645,72 @@ const Auth = {
 let pendingSignup = null;  // { email, password } awaiting OTP verification
 let resetEmail = '';       // email awaiting password-reset OTP
 
+// ── CAPTCHA (Cloudflare Turnstile) ─────────────────────────────
+// The site key should live in config.js (like SUPABASE_URL). If it's not
+// defined we fall back to Cloudflare's public TEST key, which renders a
+// widget that always passes — handy for local dev before Turnstile is
+// configured. Replace with your real key + enable in Supabase for prod.
+const TURNSTILE_KEY = (typeof TURNSTILE_SITE_KEY !== 'undefined')
+  ? TURNSTILE_SITE_KEY
+  : '1x00000000000000000000AA'; // test key: always passes
+
+const captchaWidgets = {}; // container id -> turnstile widget id
+
+function renderCaptchas() {
+  // Turnstile loads async; retry until it's available.
+  if (!window.turnstile) { setTimeout(renderCaptchas, 250); return; }
+  ['captcha-login', 'captcha-register', 'captcha-otp', 'captcha-forgot', 'captcha-reset']
+    .forEach(id => {
+      const el = document.getElementById(id);
+      if (el && !(id in captchaWidgets)) {
+        captchaWidgets[id] = turnstile.render(el, {
+          sitekey: TURNSTILE_KEY,
+          theme: 'dark',
+        });
+      }
+    });
+}
+renderCaptchas();
+
+function getCaptchaToken(id) {
+  const w = captchaWidgets[id];
+  if (w === undefined || !window.turnstile) return '';
+  return turnstile.getResponse(w) || '';
+}
+
+// Turnstile tokens are single-use: reset the widget after every auth
+// attempt (success OR failure) so the user can try again.
+function resetCaptcha(id) {
+  const w = captchaWidgets[id];
+  if (w !== undefined && window.turnstile) turnstile.reset(w);
+}
+
+// ── Terms of Service modal ─────────────────────────────────────
+function openTosModal(tab = 'tos') {
+  switchTosTab(tab);
+  document.getElementById('tos-modal').classList.add('open');
+}
+
+function closeTosModal() {
+  document.getElementById('tos-modal').classList.remove('open');
+}
+
+function switchTosTab(tab) {
+  const showPrivacy = tab === 'privacy';
+  document.getElementById('tos-content').style.display     = showPrivacy ? 'none' : 'block';
+  document.getElementById('privacy-content').style.display = showPrivacy ? 'block' : 'none';
+  document.getElementById('tab-tos').classList.toggle('active', !showPrivacy);
+  document.getElementById('tab-privacy').classList.toggle('active', showPrivacy);
+}
+
+// "I agree" inside the modal ticks the checkbox and closes the modal.
+function agreeTosFromModal() {
+  const box = document.getElementById('tos-agree');
+  if (box) box.checked = true;
+  clearError('register-error');
+  closeTosModal();
+}
+
 // ── Guest guards ───────────────────────────────────────────────
 // History and account settings require a real account. Guests are sent
 // to the login screen with a short explanation.
@@ -700,6 +766,20 @@ async function handleRegister() {
     showError('register-error', 'Password must be at least 6 characters.'); return;
   }
 
+  // Gate 1: must agree to the Terms of Service before anything is sent.
+  if (!document.getElementById('tos-agree').checked) {
+    showError('register-error', 'Please agree to the Terms of Service and Privacy Policy to continue.');
+    return;
+  }
+
+  // Gate 2: captcha must be solved BEFORE the OTP email is triggered —
+  // this protects the email-send endpoint from bots.
+  const captchaToken = getCaptchaToken('captcha-register');
+  if (!captchaToken) {
+    showError('register-error', 'Please complete the captcha.');
+    return;
+  }
+
   const btn = document.querySelector('#screen-register .btn-submit');
   const orig = btn.innerHTML;
   btn.textContent = 'Sending code…';
@@ -707,25 +787,27 @@ async function handleRegister() {
 
   try {
     // Creates the user (unconfirmed) and emails a 6-digit code.
+    // The captcha token is verified server-side by Supabase before the
+    // email is sent, so bots can't trigger sends by calling the API directly.
     const { data, error } = await sbClient.auth.signUp({
       email,
       password,
-      options: { data: { account_name } }
+      options: { data: { account_name }, captchaToken }
     });
 
     if (error) {
         if (error.message.toLowerCase().includes('already registered') || 
           error.message.toLowerCase().includes('already exists')) {
           
-          // Resend confirmation email by calling signUp again
-          await sbClient.auth.signUp({ email, password });
-          
+          // NOTE: we can't just call signUp again here to resend — the
+          // captcha token was consumed by the first call. Send the user to
+          // the OTP screen, where "Resend code" has its own captcha.
           pendingSignup = { email, password };
           document.getElementById('otp-target-email').textContent = email;
           document.getElementById('otp-code').value = '';
           clearError('otp-error');
           goto('screen-otp');
-          showError('otp-error', 'Account exists but is unconfirmed. A new code has been sent.');
+          showError('otp-error', 'Account exists but is unconfirmed. Solve the captcha below and tap "Resend code".');
           return;
         }
       showError('register-error', error.message); return;
@@ -753,6 +835,7 @@ async function handleRegister() {
   } finally {
     btn.innerHTML = orig;
     btn.disabled = false;
+    resetCaptcha('captcha-register'); // token is single-use
   }
 }
 
@@ -815,6 +898,12 @@ async function verifySignupOtp() {
 
 async function resendSignupOtp() {
   if (!pendingSignup || !pendingSignup.email) return;
+
+  const captchaToken = getCaptchaToken('captcha-otp');
+  if (!captchaToken) {
+    showError('otp-error', 'Please complete the captcha to resend the code.'); return;
+  }
+
   const link = document.getElementById('otp-resend');
   const orig = link ? link.textContent : '';
   if (link) link.textContent = 'Sending…';
@@ -824,12 +913,14 @@ async function resendSignupOtp() {
     const { error } = await sbClient.auth.signUp({
       email: pendingSignup.email,
       password: pendingSignup.password,
+      options: { captchaToken }
     });
     showError('otp-error', error ? error.message : '✓ New code sent.');
   } catch (e) {
     showError('otp-error', 'Could not resend. Is Supabase running?');
   } finally {
     if (link) setTimeout(() => { link.textContent = orig; }, 1500);
+    resetCaptcha('captcha-otp'); // token is single-use
   }
 }
 
@@ -844,12 +935,19 @@ async function sendResetCode() {
 
   if (!email) { showError(errId, 'Please enter your email.'); return; }
 
+  // Pick the captcha widget on whichever screen we're on.
+  const captchaId = onReset ? 'captcha-reset' : 'captcha-forgot';
+  const captchaToken = getCaptchaToken(captchaId);
+  if (!captchaToken) {
+    showError(errId, 'Please complete the captcha.'); return;
+  }
+
   const btn = onReset ? null : document.querySelector('#screen-forgot .btn-submit');
   let orig;
   if (btn) { orig = btn.innerHTML; btn.textContent = 'Sending…'; btn.disabled = true; }
 
   try {
-    const { error } = await sbClient.auth.resetPasswordForEmail(email);
+    const { error } = await sbClient.auth.resetPasswordForEmail(email, { captchaToken });
     if (error) { showError(errId, error.message); return; }
 
     resetEmail = email;
@@ -867,6 +965,7 @@ async function sendResetCode() {
     showError(errId, 'Could not connect to Supabase. Is it running?');
   } finally {
     if (btn) { btn.innerHTML = orig; btn.disabled = false; }
+    resetCaptcha(captchaId); // token is single-use
   }
 }
 
@@ -924,12 +1023,21 @@ async function handleLogin() {
     showError('login-error', 'Please enter your email and password.'); return;
   }
 
+  const captchaToken = getCaptchaToken('captcha-login');
+  if (!captchaToken) {
+    showError('login-error', 'Please complete the captcha.'); return;
+  }
+
   const btn = document.querySelector('#screen-login .btn-submit');
   btn.textContent = 'Signing in…';
   btn.disabled = true;
 
   try {
-    const { data, error } = await sbClient.auth.signInWithPassword({ email, password });
+    const { data, error } = await sbClient.auth.signInWithPassword({
+      email,
+      password,
+      options: { captchaToken }
+    });
 
     if (error) {
       showError('login-error', error.message); return;
@@ -945,6 +1053,7 @@ async function handleLogin() {
   } finally {
     btn.textContent = 'Sign in';
     btn.disabled = false;
+    resetCaptcha('captcha-login'); // token is single-use
   }
 }
 
