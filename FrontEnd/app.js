@@ -714,6 +714,20 @@ async function handleRegister() {
     });
 
     if (error) {
+        if (error.message.toLowerCase().includes('already registered') || 
+          error.message.toLowerCase().includes('already exists')) {
+          
+          // Resend confirmation email by calling signUp again
+          await sbClient.auth.signUp({ email, password });
+          
+          pendingSignup = { email, password };
+          document.getElementById('otp-target-email').textContent = email;
+          document.getElementById('otp-code').value = '';
+          clearError('otp-error');
+          goto('screen-otp');
+          showError('otp-error', 'Account exists but is unconfirmed. A new code has been sent.');
+          return;
+        }
       showError('register-error', error.message); return;
     }
 
@@ -759,6 +773,8 @@ async function verifySignupOtp() {
   btn.textContent = 'Verifying…';
   btn.disabled = true;
 
+
+  console.log("attempting to send code")
   try {
     // 'signup' is the standard type for confirming a new account; some
     // Supabase versions label the same code 'email', so we fall back to it.
@@ -802,10 +818,12 @@ async function resendSignupOtp() {
   const link = document.getElementById('otp-resend');
   const orig = link ? link.textContent : '';
   if (link) link.textContent = 'Sending…';
+
+  console.log("attempting to resend code")
   try {
-    const { error } = await sbClient.auth.resend({
-      type: 'signup',
-      email: pendingSignup.email
+    const { error } = await sbClient.auth.signUp({
+      email: pendingSignup.email,
+      password: pendingSignup.password,
     });
     showError('otp-error', error ? error.message : '✓ New code sent.');
   } catch (e) {
