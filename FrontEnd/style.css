@@ -1127,11 +1127,22 @@ body.guest .avatar { display: none; }
 .tos-label .form-link { cursor: pointer; }
 
 /* ── Captcha containers ──────────────────────────────────────── */
+/* The Turnstile widget renders at a fixed 300px width. To keep it inside
+   the form card (and matching the input fields), the outer .captcha-box
+   spans the card's content width and clips any overflow, while the inner
+   render target is scaled by JS (fitCaptchas) to exactly fill that width. */
 .captcha-box {
+  width: 100%;
   display: flex;
+  align-items: center;
   justify-content: center;
+  overflow: hidden;
   margin: 14px 0 4px;
-  min-height: 0;
+}
+
+.captcha-inner {
+  width: 300px;              /* Turnstile's fixed natural width */
+  transform-origin: center center;
 }
 
 .captcha-box iframe { border-radius: 8px; }

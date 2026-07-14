@@ -113,7 +113,7 @@
         </div>
       </div>
 
-      <div class="captcha-box" id="captcha-login"></div>
+      <div class="captcha-box"><div class="captcha-inner" id="captcha-login"></div></div>
 
       <p class="form-error" id="login-error"></p>
       <button class="btn-submit" onclick="handleLogin()">
@@ -202,7 +202,7 @@
         </label>
       </div>
 
-      <div class="captcha-box" id="captcha-register"></div>
+      <div class="captcha-box"><div class="captcha-inner" id="captcha-register"></div></div>
 
       <p class="form-error" id="register-error"></p>
       <button class="btn-submit" onclick="handleRegister()">
@@ -255,7 +255,7 @@
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>
       </button>
 
-      <div class="captcha-box captcha-compact" id="captcha-otp"></div>
+      <div class="captcha-box captcha-compact"><div class="captcha-inner" id="captcha-otp"></div></div>
       <p class="form-footnote">Didn't get the code? <span class="form-link" id="otp-resend" onclick="resendSignupOtp()">Resend code</span></p>
       <p class="form-footnote" style="margin-top:6px"><span class="form-link dim" onclick="goto('screen-register')">← Back</span></p>
     </div>
@@ -280,7 +280,7 @@
         <input type="email" class="field-input" id="forgot-email" placeholder="you@example.com" autocomplete="email"/>
       </div>
 
-      <div class="captcha-box" id="captcha-forgot"></div>
+      <div class="captcha-box"><div class="captcha-inner" id="captcha-forgot"></div></div>
 
       <p class="form-error" id="forgot-error"></p>
       <button class="btn-submit" onclick="sendResetCode()">
@@ -327,7 +327,7 @@
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>
       </button>
 
-      <div class="captcha-box captcha-compact" id="captcha-reset"></div>
+      <div class="captcha-box captcha-compact"><div class="captcha-inner" id="captcha-reset"></div></div>
       <p class="form-footnote">Didn't get the code? <span class="form-link" onclick="sendResetCode()">Resend</span></p>
     </div>
   </main>

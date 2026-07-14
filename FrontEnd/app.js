@@ -9,6 +9,9 @@ function goto(screenId) {
   if (target) {
     target.classList.add('active');
     window.scrollTo({ top: 0, behavior: 'smooth' });
+    // Captcha boxes have zero width while their screen is hidden, so they
+    // can't be scaled until now. Re-fit once this screen is visible.
+    if (typeof fitCaptchas === 'function') requestAnimationFrame(fitCaptchas);
   }
 }
 
@@ -669,8 +672,29 @@ function renderCaptchas() {
         });
       }
     });
+  // The widget's iframe appears a beat after render(); fit once it's there.
+  fitCaptchas();
+  setTimeout(fitCaptchas, 400);
 }
 renderCaptchas();
+
+// Scale each widget so it exactly fills its container width — full-width on
+// desktop (matching the inputs) and shrunk to fit on narrow screens so it
+// never overflows the card. Turnstile's natural size is 300 x 65.
+function fitCaptchas() {
+  document.querySelectorAll('.captcha-box').forEach(box => {
+    const inner = box.querySelector('.captcha-inner');
+    if (!inner) return;
+    const avail = box.clientWidth;
+    if (!avail) return;
+    const scale = avail / 300;
+    inner.style.transform = `scale(${scale})`;
+    box.style.height = `${65 * scale}px`; // collapse the gap left by scaling
+  });
+}
+
+// Re-fit on resize / orientation change.
+window.addEventListener('resize', fitCaptchas);
 
 function getCaptchaToken(id) {
   const w = captchaWidgets[id];
