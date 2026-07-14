@@ -22,6 +22,7 @@ import json
 import base64
 import binascii
 import hashlib
+import time
 import urllib.request
 import urllib.error
 from typing import Optional
@@ -223,7 +224,50 @@ def match_known_false(text):
     for pat, reason in KNOWN_FALSE:
         if re.search(pat, low):
             return reason
+    for creg, reason in load_dynamic_claims():
+        if creg.search(low):
+            return reason
     return None
+
+
+# ── Admin-managed claims (known_claims table in Supabase) ──────
+# Admins add/edit debunked-claim patterns from the dashboard; the engine
+# picks them up here without a redeploy. Cached for 60s; any failure
+# (table missing, Supabase down, bad env) silently falls back to the
+# built-in KNOWN_FALSE list above.
+_claims_cache = {"at": 0.0, "items": []}
+
+
+def load_dynamic_claims():
+    now = time.time()
+    if now - _claims_cache["at"] < 60:
+        return _claims_cache["items"]
+    _claims_cache["at"] = now  # even on failure, don't retry for another 60s
+    try:
+        from supabase import create_client
+        url = os.getenv("SUPABASE_URL")
+        key = os.getenv("SUPABASE_SERVICE_KEY")
+        if not url or not key:
+            return _claims_cache["items"]
+        sb = create_client(url, key)
+        rows = (sb.table("known_claims")
+                  .select("pattern, reason")
+                  .eq("active", True)
+                  .execute().data) or []
+        items = []
+        for r in rows:
+            pat, reason = r.get("pattern") or "", r.get("reason") or "Flagged claim"
+            if not pat:
+                continue
+            try:
+                items.append((re.compile(pat, re.IGNORECASE), reason))
+            except re.error:
+                # Not valid regex? Treat it as a plain keyword phrase.
+                items.append((re.compile(re.escape(pat), re.IGNORECASE), reason))
+        _claims_cache["items"] = items
+    except Exception:
+        pass  # keep whatever we had; built-in list still applies
+    return _claims_cache["items"]
 
 
 def heuristic_text_or_article(user_input):

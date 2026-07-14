@@ -187,6 +187,12 @@ async function runScan() {
   setTimeout(() => {
     renderResult(report);
     goto('screen-result-high');
+    currentReportMeta = {
+      preview: displayLabel,
+      score: report.score,
+      verdict: report.verdict,
+      report_id: null // filled in by saveReport once the row exists
+    };
     saveReport(payload, report); // account users: persist to report history
   }, Math.max(0, 1200 - elapsed));
 }
@@ -863,6 +869,7 @@ function applySession(session) {
   Auth.user  = session.user;
   updateAvatar(session.user.email);
   loadReports();
+  checkAdminRole();
   // If we're on a public screen (fresh load, or just back from Google),
   // move into the app.
   const active = document.querySelector('.screen.active');
@@ -871,11 +878,28 @@ function applySession(session) {
   }
 }
 
+// Show the Admin button only for accounts with the admin role.
+// (The role itself is granted via `select make_admin('email')` in the
+// Supabase SQL editor — it can never be self-assigned from the app,
+// and RLS enforces the real security server-side regardless of the UI.)
+async function checkAdminRole() {
+  Auth.isAdmin = false;
+  try {
+    const { data } = await sbClient.from('user_roles')
+      .select('role').eq('user_id', Auth.user.id).maybeSingle();
+    Auth.isAdmin = !!(data && data.role === 'admin');
+  } catch (e) { /* table may not exist yet — treat as non-admin */ }
+  document.querySelectorAll('.nav-admin-btn')
+    .forEach(b => { b.style.display = Auth.isAdmin ? '' : 'none'; });
+}
+
 sbClient.auth.onAuthStateChange((event, session) => {
   if (event === 'SIGNED_IN' && session) applySession(session);
   if (event === 'SIGNED_OUT') {
     Auth.token = null;
     Auth.user  = null;
+    Auth.isAdmin = false;
+    document.querySelectorAll('.nav-admin-btn').forEach(b => { b.style.display = 'none'; });
     reportsCache = [];
     activeReportId = null;
     refreshAvatars();
@@ -916,6 +940,7 @@ async function saveReport(payload, report) {
     }).select().single();
     if (error) { console.warn('[reports] save failed:', error.message); return; }
     activeReportId = data ? data.id : null;
+    if (currentReportMeta && data) currentReportMeta.report_id = data.id;
     loadReports();
   } catch (e) {
     console.warn('[reports] save failed:', e);
@@ -1006,6 +1031,7 @@ function openSavedReport(id) {
   const r = reportsCache.find(x => x.id === id);
   if (!r || !r.result) return;
   activeReportId = id;
+  currentReportMeta = { preview: r.input_preview, score: r.score, verdict: r.verdict, report_id: r.id };
   renderResult(r.result);
   renderReportSidebar();
   goto('screen-result-high');
@@ -1013,6 +1039,87 @@ function openSavedReport(id) {
 
 // Initial paint (locked panel for guests until a session is restored).
 renderReportSidebar();
+
+// ── Flag flow (the ⚑ button finally records something) ─────────
+// What's currently on the results screen, so a flag can reference it.
+let currentReportMeta = null;
+
+function openFlagForm() {
+  if (!Auth.isLoggedIn()) {
+    goto('screen-login');
+    showError('login-error', 'Sign in to flag a result — flags are tied to your account.');
+    return;
+  }
+  const ctx = document.getElementById('flag-context');
+  if (ctx) {
+    if (currentReportMeta) {
+      const cls = currentReportMeta.score >= 70 ? 'green' : currentReportMeta.score >= 45 ? 'yellow' : 'red';
+      ctx.innerHTML =
+        `<span class="rs-badge ${cls}">${currentReportMeta.score}</span>` +
+        `<span class="flag-ctx-preview">${escapeHtml(currentReportMeta.preview || 'Current result')}</span>`;
+      ctx.style.display = '';
+    } else {
+      ctx.style.display = 'none';
+    }
+  }
+  const box = document.getElementById('flag-reason');
+  if (box) box.value = '';
+  clearError('flag-error');
+  goto('screen-flag-form');
+}
+
+async function submitFlag() {
+  const reason = (document.getElementById('flag-reason').value || '').trim();
+  if (reason.length < 10) {
+    showError('flag-error', 'Please describe the issue in a bit more detail (at least 10 characters).');
+    return;
+  }
+  const btn = document.querySelector('#screen-flag-form .btn-submit');
+  btn.textContent = 'Submitting…'; btn.disabled = true;
+  try {
+    const { error } = await sbClient.from('flags').insert({
+      user_id: Auth.user.id,
+      report_id: (currentReportMeta && currentReportMeta.report_id) || null,
+      content_preview: (currentReportMeta && currentReportMeta.preview) || null,
+      score: (currentReportMeta && typeof currentReportMeta.score === 'number') ? currentReportMeta.score : null,
+      verdict: (currentReportMeta && currentReportMeta.verdict) || null,
+      reason: reason,
+      status: 'pending'
+    });
+    if (error) { showError('flag-error', error.message); return; }
+    goto('screen-flag'); // the existing success screen — now it's telling the truth
+  } catch (e) {
+    showError('flag-error', 'Could not submit. Is Supabase reachable?');
+  } finally {
+    btn.textContent = 'Submit flag'; btn.disabled = false;
+  }
+}
+
+// ── Public Trends page: load live rows from the trends table ───
+// Falls back silently to the hardcoded cards if the table is empty
+// or not created yet.
+async function loadTrends() {
+  try {
+    const { data, error } = await sbClient.from('trends')
+      .select('topic, flagged_count, pct')
+      .order('flagged_count', { ascending: false });
+    if (error || !data || !data.length) return;
+    const grid = document.getElementById('trends-grid');
+    if (!grid) return;
+    const colorOf = p => p >= 80 ? '#F87171' : p >= 60 ? '#FACC15' : p >= 35 ? '#A78BFA' : '#4ADE80';
+    grid.innerHTML = data.map(t =>
+      `<div class="trend-card">` +
+        `<div class="trend-topic">${escapeHtml(t.topic)}</div>` +
+        `<div class="trend-count">${Number(t.flagged_count).toLocaleString()}</div>` +
+        `<div class="trend-lbl">flagged articles</div>` +
+        `<div class="trend-bar-row"><div class="trend-bar-track">` +
+          `<div class="trend-bar-fill" style="width:${clampPct(t.pct)}%;background:${colorOf(t.pct)};"></div>` +
+        `</div><span class="trend-pct">${clampPct(t.pct)}%</span></div>` +
+      `</div>`).join('');
+  } catch (e) { /* keep hardcoded fallback */ }
+}
+function clampPct(p) { return Math.max(0, Math.min(100, Number(p) || 0)); }
+loadTrends();
 
 // ── Guest guards ───────────────────────────────────────────────
 // History and account settings require a real account. Guests are sent
