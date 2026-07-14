@@ -21,6 +21,7 @@ import re
 import json
 import base64
 import binascii
+import hashlib
 import urllib.request
 import urllib.error
 from typing import Optional
@@ -159,13 +160,38 @@ def fetch_url(url):
 
 def verdict_from(score):
     if score >= 70:
-        return "credible", "Credible", "Strong credibility markers detected."
-    if score >= 40:
-        return "uncertain", "Uncertain", "Mixed signals - verify with other sources."
-    return "not_credible", "Not credible", "High likelihood of misinformation."
+        return ("credible", "Not fake news — high confidence",
+                "We're confident this is NOT fake news. It shows strong sourcing and is consistent with known facts.")
+    if score >= 45:
+        return ("uncertain", "Unsure — verify before sharing",
+                "The signals are mixed. Treat this with caution and verify with trusted sources before believing or sharing it.")
+    return ("not_credible", "Likely fake news — high confidence",
+            "Highly confident this is fake news or misleading — but double-check with a trusted fact-checker to be certain.")
 
 
-def assemble(score, confidence, input_type, breakdown, details, tags, summary, engine):
+def spread(score, seed):
+    """Anti-clustering: both the AI and the heuristic love round numbers
+    (50, 60, 85...), so different items pile up on identical scores. If the
+    score is a suspiciously round multiple of 5, nudge it by a small offset
+    derived from a hash of the input — deterministic, so re-checking the
+    SAME item gives the same score, but different items spread out. The
+    nudge never crosses a verdict boundary (44/45 and 69/70 stay intact)."""
+    s = clamp(score)
+    if s % 5 != 0:
+        return s  # already a natural-looking number
+    h = int(hashlib.md5((seed or "x").encode("utf-8", "ignore")).hexdigest()[:8], 16)
+    nudged = s + (h % 9) - 4  # -4 .. +4
+    if s >= 70:
+        nudged = max(70, nudged)
+    elif s >= 45:
+        nudged = min(69, max(45, nudged))
+    else:
+        nudged = min(44, nudged)
+    return clamp(nudged)
+
+
+def assemble(score, confidence, input_type, breakdown, details, tags, summary, engine,
+             key_findings=None, recommendation=None):
     verdict, label, desc = verdict_from(score)
     full_details = [
         {"label": "Input type", "value": input_type},
@@ -182,6 +208,8 @@ def assemble(score, confidence, input_type, breakdown, details, tags, summary, e
         "details": full_details,
         "tags": tags,
         "summary": summary,
+        "key_findings": key_findings or [],
+        "recommendation": recommendation or "",
         "engine": engine,
     }
 
@@ -313,30 +341,93 @@ def heuristic_text_or_article(user_input):
     if "Satire" in bias: tags.append({"text": "\u2717 Satire / parody", "kind": "red"})
 
     summary = build_summary(score, publisher, is_url, known_false,
-                            clickbait, sensational, verify, confidence)
+                            clickbait, sensational, verify, confidence,
+                            attribution=attribution, wc=wc)
+
+    # Spread suspiciously round scores so different items don't all land on
+    # the same number (deterministic per input, band-safe).
+    score = spread(score, user_input)
+    confidence = spread(confidence, user_input + "::conf")
+    for dim in breakdown:
+        dim["value"] = spread(dim["value"], user_input + "::" + dim["label"])
+
+    key_findings = []
+    key_findings.append("Source: " + publisher + ((" (" + domain_age + ")") if is_url and domain_age != "-" else ""))
+    if known_false:
+        key_findings.append("Matches a known debunked claim: " + known_false)
+    if attribution:
+        key_findings.append(str(attribution) + " attribution cue(s) found - quotes, officials, studies, or data")
+    else:
+        key_findings.append("No attribution detected - nothing traces the claims to an accountable source")
+    if clickbait:
+        key_findings.append(str(clickbait) + " clickbait-style phrase(s) in the wording")
+    if sensational:
+        key_findings.append(str(sensational) + " sensational or conspiratorial term(s) used")
+    if caps_ratio > 0.05:
+        key_findings.append("Heavy ALL-CAPS emphasis, a common marker of manipulative content")
+    if is_url and not (clickbait or sensational or known_false):
+        key_findings.append("Language stays largely neutral, with no emotional-manipulation patterns")
+
     return assemble(score, confidence, input_type, breakdown, details, tags,
-                    summary, "heuristic")
+                    summary, "heuristic",
+                    key_findings=key_findings[:6],
+                    recommendation=build_recommendation(score))
 
 
 def build_summary(score, publisher, is_url, known_false, clickbait,
-                  sensational, verify, confidence):
+                  sensational, verify, confidence, attribution=0, wc=0):
     parts = []
+    what = "the linked article" if is_url else "the submitted text claim"
+    parts.append("Credify analyzed " + what +
+                 (" from " + publisher if publisher and publisher != "No source provided" else "") + ".")
     if known_false:
-        parts.append("This matches a known false or debunked claim: " + known_false + ".")
+        parts.append("It matches a known false or debunked claim: " + known_false +
+                     ". That alone caps the score in the lowest band, because repeating "
+                     "an already-debunked claim is one of the clearest markers of misinformation.")
     elif score >= 70:
-        parts.append(publisher + " shows strong credibility signals.")
-    elif score >= 40:
-        parts.append("The signals here are mixed - nothing confirms or debunks it outright.")
+        parts.append("The strongest signals in its favor: a recognizable, established source"
+                     + (", " + str(attribution) + " attribution cue(s) such as quotes, named "
+                        "officials, or cited studies" if attribution else "")
+                     + ", and language that stays largely neutral rather than emotional.")
+        parts.append("No debunked claims, clickbait framing, or sensational trigger words were detected.")
+    elif score >= 45:
+        parts.append("Nothing here confirms or debunks the content outright. Some signals point "
+                     "each way, which is why it lands in the middle band rather than a confident verdict.")
+        if attribution:
+            parts.append("It does include " + str(attribution) + " attribution cue(s), which helps, "
+                         "but not enough to verify the claims independently.")
+        else:
+            parts.append("It makes assertions without citing sources, officials, or data that "
+                         "could be independently checked.")
     else:
-        parts.append("Several warning signs typical of low-quality or misleading content were found.")
-    if clickbait or sensational:
-        parts.append("The wording leans on emotional or clickbait-style language.")
+        parts.append("Multiple warning signs typical of low-quality or misleading content were found, "
+                     "and they outweigh any positive signals.")
+    if clickbait:
+        parts.append("The wording uses " + str(clickbait) + " clickbait-style pattern(s) - "
+                     "phrasing engineered for shares rather than accuracy.")
+    if sensational:
+        parts.append(str(sensational) + " sensational or conspiratorial term(s) appear, which "
+                     "credible reporting tends to avoid.")
     if verify < 45 and not known_false:
-        parts.append("Little sourcing or attribution was detected.")
+        parts.append("Little sourcing or attribution was detected, so the claims can't be traced "
+                     "back to anyone accountable.")
     if confidence < 45:
-        parts.append("Confidence is low because there was little to go on - treat this as a rough estimate.")
-    parts.append("This is an automated signal-based estimate; cross-check important claims with trusted fact-checkers.")
+        parts.append("Confidence is low because there was little material to analyze - treat the "
+                     "score as a rough signal, not a ruling.")
+    parts.append("This is an automated, signal-based estimate; for anything important, "
+                 "cross-check with trusted fact-checkers such as VERA Files or FactCheck.org.")
     return " ".join(parts)
+
+
+def build_recommendation(score):
+    if score >= 70:
+        return ("This looks safe to trust and share, but no automated check is perfect - "
+                "for high-stakes decisions, confirm directly with the original source.")
+    if score >= 45:
+        return ("Hold off on sharing this. Search the claim on VERA Files, Rappler Fact Check, "
+                "or Google Fact Check Explorer first, and treat it as unverified until confirmed.")
+    return ("Do not share this content. If you've seen it circulating, check it against trusted "
+            "fact-checkers - and consider reporting the post where you found it.")
 
 
 def heuristic_image(caption, filename):
@@ -373,8 +464,30 @@ def heuristic_image(caption, filename):
         details.append({"label": "File", "value": filename})
     if caption:
         details.append({"label": "Caption", "value": caption[:80]})
+
+    seed = (filename or "") + (caption or "")
+    score = spread(score, seed)
+    for dim in breakdown:
+        dim["value"] = spread(dim["value"], seed + "::" + dim["label"])
+
+    if ai_hit or known_false:
+        key_findings = [
+            "The filename or caption itself signals AI generation or fabrication",
+            ("Matches a known debunked claim: " + known_false) if known_false
+                else "Provenance cannot be established for this image",
+            "Pixel-level inspection was NOT performed (AI vision engine is off)",
+        ]
+    else:
+        key_findings = [
+            "No AI-generation hints in the filename or caption",
+            "Pixel-level inspection was NOT performed (AI vision engine is off)",
+            "Authenticity, manipulation, and scene plausibility remain unverified",
+        ]
+
     return assemble(score, confidence, "Image", breakdown, details, tags,
-                    summary, "heuristic")
+                    summary, "heuristic",
+                    key_findings=key_findings,
+                    recommendation=build_recommendation(score))
 
 
 # ---------------------------------------------------------------------------
@@ -404,14 +517,36 @@ Return ONLY a JSON object (no markdown, no backticks) with EXACTLY this shape:
   "breakdown": [ {"label": "<dimension>", "value": <int 0-100>} ],
   "details":   [ {"label": "<key>", "value": "<short value>"} ],
   "flags":     ["<short warning or note>"],
-  "summary": "<2-4 sentences explaining WHY, in plain English>"
+  "key_findings": ["<4-6 specific, concrete findings about THIS item, one short sentence each>"],
+  "summary": "<5-8 sentences of detailed plain-English analysis>",
+  "recommendation": "<1-2 sentences telling the reader exactly what to do next>"
 }
 
-Scoring rubric (follow strictly, be decisive, never default to 50):
-- 85-100: verified, authentic, factually sound, reputable/traceable.
-- 55-84: mostly credible with gaps, minor bias, or partial verification.
-- 25-54: significant problems - unverified, misleading framing, weak sourcing.
-- 0-24: fabricated, AI-generated, manipulated, or factually false/impossible.
+Scoring bands (verdict MUST match the score):
+- 70-100 -> "credible":     confidently NOT fake news. Verified, well-sourced, consistent with known facts.
+- 45-69  -> "uncertain":    mixed or thin signals. Cannot confirm or debunk. Reader should verify.
+- 0-44   -> "not_credible": high confidence of fake/misleading content - fabricated, manipulated,
+             debunked, impossible, or riddled with misinformation markers.
+
+NUMBER RULES (critical - follow exactly):
+- Use PRECISE integers that reflect your actual assessment: 73, 41, 88, 62, 17, 94...
+- NEVER use round multiples of 5 or 10 (never 50, 60, 75, 85, 90...). Round numbers look lazy.
+- Every breakdown value must DIFFER from the other breakdown values AND from the overall score.
+- Spread across the full band: a weak-but-not-terrible item might be 38, an extremely fabricated one 6.
+- Be decisive. Never park at the midpoint. If evidence is thin, LOWER the confidence instead.
+
+SUMMARY RULES: write 5-8 sentences that cover, in order:
+(1) what exactly was analyzed, (2) the strongest credibility signals found,
+(3) the strongest warning signs found, (4) how you weighed them to reach the score,
+(5) any important context or caveat the reader should know. Be specific to THIS item -
+name the source, quote a suspicious phrase, describe the visual artifact - never generic filler.
+
+KEY_FINDINGS: concrete, specific observations ("The article cites two named health officials",
+"Shadows fall in two different directions", "The domain was registered to mimic a real outlet") -
+not vague statements like "the source is questionable".
+
+RECOMMENDATION: actionable next step matched to the verdict (share it / verify it first on
+specific fact-checking sites / do not share and warn others).
 
 IMAGE rules (critical):
 - If the image is AI-generated, digitally manipulated, or depicts a physically or
@@ -426,9 +561,7 @@ ARTICLE rules: weigh source reliability, factual accuracy, neutrality, transpare
 
 TEXT rules: weigh factual plausibility vs known facts, attribution, neutrality, verifiability.
   Historically/scientifically impossible claims are not_credible (0-24).
-  Dimensions: "Factual plausibility", "Attribution", "Neutrality", "Verifiability".
-
-If evidence is thin, LOWER the confidence rather than parking the score at the midpoint."""
+  Dimensions: "Factual plausibility", "Attribution", "Neutrality", "Verifiability"."""
 
 
 def groq_scan(body, page_context=""):
@@ -472,8 +605,8 @@ def groq_scan(body, page_context=""):
 
         resp = client.chat.completions.create(
             model=model,
-            temperature=0.2,
-            max_tokens=900,
+            temperature=0.5,   # slight variance so scores don't cluster
+            max_tokens=1400,   # room for the detailed summary + findings
             messages=[
                 {"role": "system", "content": SYSTEM_PROMPT},
                 {"role": "user", "content": user_content},
@@ -483,16 +616,21 @@ def groq_scan(body, page_context=""):
         text = re.sub(r"^```(json)?|```$", "", raw).strip()
         data = json.loads(text)
 
-        score = clamp(data.get("score", 50))
-        confidence = clamp(data.get("confidence", 60))
+        seed = (body.input or "") + (body.filename or "")
+        score = spread(clamp(data.get("score", 50)), seed)
+        confidence = spread(clamp(data.get("confidence", 60)), seed + "::conf")
         breakdown = []
         for item in (data.get("breakdown") or [])[:4]:
-            breakdown.append({"label": str(item.get("label", ""))[:40],
-                              "value": clamp(item.get("value", score))})
+            label = str(item.get("label", ""))[:40]
+            breakdown.append({"label": label,
+                              "value": spread(clamp(item.get("value", score)), seed + "::" + label)})
         details = []
         for item in (data.get("details") or [])[:6]:
             details.append({"label": str(item.get("label", ""))[:40],
                             "value": str(item.get("value", ""))[:90]})
+
+        key_findings = [str(f)[:180] for f in (data.get("key_findings") or [])[:6]]
+        recommendation = str(data.get("recommendation", ""))[:400]
 
         flags = data.get("flags") or []
         icon = {"Image": "\U0001F5BC\uFE0F Image", "Article": "\U0001F517 Article",
@@ -510,7 +648,8 @@ def groq_scan(body, page_context=""):
 
         summary = str(data.get("summary", "")) or "Analysis complete."
         return assemble(score, confidence, input_type, breakdown, details, tags,
-                        summary, "groq")
+                        summary, "groq",
+                        key_findings=key_findings, recommendation=recommendation)
     except Exception as e:
         print("[scan] Groq call failed (" + str(e) + "); using heuristic.")
         return None

@@ -780,8 +780,8 @@ button { cursor: pointer; font-family: 'Instrument Sans', sans-serif; border: no
 .score-label.high { color: var(--green); }
 .score-label.mid  { color: var(--yellow); }
 .score-label.low  { color: var(--red); }
-.score-num { font-family: 'Syne', sans-serif; font-size: 30px; font-weight: 700; color: var(--text); line-height: 1; }
-.score-desc { font-size: 13px; color: var(--text3); margin-top: 2px; }
+.score-num { font-family: 'Syne', sans-serif; font-size: 36px; font-weight: 700; color: var(--text); line-height: 1; }
+.score-desc { font-size: 14.5px; color: var(--text3); margin-top: 4px; line-height: 1.5; }
 
 .tags-col { display: flex; flex-direction: column; gap: 6px; align-self: flex-start; }
 
@@ -818,7 +818,7 @@ button { cursor: pointer; font-family: 'Instrument Sans', sans-serif; border: no
   margin-bottom: 14px;
   font-weight: 600;
 }
-.box-text { font-size: 13.5px; color: var(--text2); line-height: 1.7; }
+.box-text { font-size: 15.5px; color: var(--text2); line-height: 1.8; }
 
 .cred-row {
   display: flex;
@@ -1417,4 +1417,55 @@ body.guest .avatar { display: none; }
     order: 2;
     max-height: 340px;
   }
+}
+/* ══════════════════════════════════════════════════════════════
+   RESULTS SCREEN: KEY FINDINGS + RECOMMENDATION
+   ══════════════════════════════════════════════════════════════ */
+
+.findings-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 11px;
+}
+
+.finding-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 11px;
+  font-size: 14.5px;
+  line-height: 1.6;
+  color: var(--text2);
+}
+
+.finding-dot {
+  flex-shrink: 0;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  margin-top: 7px;
+}
+
+.finding-dot.high { background: var(--green); box-shadow: 0 0 8px var(--green-dim); }
+.finding-dot.mid  { background: var(--yellow); box-shadow: 0 0 8px var(--yellow-dim); }
+.finding-dot.low  { background: var(--red); box-shadow: 0 0 8px var(--red-dim); }
+
+.reco-box {
+  border-radius: var(--radius-lg);
+  padding: 18px 20px;
+  border: 0.5px solid var(--border2);
+  background: var(--bg3);
+}
+
+.reco-box.high { background: var(--green-dim);  border-color: var(--green-border); }
+.reco-box.mid  { background: var(--yellow-dim); border-color: var(--yellow-border); }
+.reco-box.low  { background: var(--red-dim);    border-color: var(--red-border); }
+
+.reco-text {
+  font-size: 15.5px;
+  line-height: 1.75;
+  color: var(--text);
+  font-weight: 500;
 }

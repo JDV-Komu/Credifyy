@@ -280,6 +280,30 @@ function renderResult(r) {
                     : r.engine === 'gemini' ? 'Analysis by Gemini'
                     : 'Signal-based analysis';
   setText('rc-engine', engineLabel);
+
+  // Key findings (newer reports only — hide the box if absent)
+  const findBox = document.getElementById('rc-findings-box');
+  const findList = document.getElementById('rc-findings');
+  if (findBox && findList) {
+    const kf = Array.isArray(r.key_findings) ? r.key_findings : [];
+    findBox.style.display = kf.length ? '' : 'none';
+    findList.innerHTML = '';
+    kf.forEach(f => {
+      const li = document.createElement('li');
+      li.className = 'finding-item';
+      li.innerHTML = `<span class="finding-dot ${level}"></span><span>${escapeHtml(String(f))}</span>`;
+      findList.appendChild(li);
+    });
+  }
+
+  // Recommendation ("What you should do")
+  const recoBox = document.getElementById('rc-reco-box');
+  const recoEl  = document.getElementById('rc-reco');
+  if (recoBox && recoEl) {
+    recoBox.style.display = r.recommendation ? '' : 'none';
+    recoBox.className = `reco-box ${level}`;
+    recoEl.textContent = r.recommendation || '';
+  }
 }
 
 function escapeHtml(s) {
@@ -309,12 +333,33 @@ function heuristicScanJS(payload) {
   const matchFalse = s => { for (const [re, why] of KNOWN_FALSE) if (re.test(s || '')) return why; return null; };
 
   const verdictOf = score => score >= 70
-    ? { verdict: 'credible', label: 'Credible', desc: 'Strong credibility markers detected.' }
-    : score >= 40
-    ? { verdict: 'uncertain', label: 'Uncertain', desc: 'Mixed signals — verify with other sources.' }
-    : { verdict: 'not_credible', label: 'Not credible', desc: 'High likelihood of misinformation.' };
+    ? { verdict: 'credible', label: 'Not fake news — high confidence', desc: "We're confident this is NOT fake news. It shows strong sourcing and is consistent with known facts." }
+    : score >= 45
+    ? { verdict: 'uncertain', label: 'Unsure — verify before sharing', desc: 'The signals are mixed. Treat this with caution and verify with trusted sources before believing or sharing it.' }
+    : { verdict: 'not_credible', label: 'Likely fake news — high confidence', desc: 'Highly confident this is fake news or misleading — but double-check with a trusted fact-checker to be certain.' };
 
-  const assemble = (score, confidence, inputType, breakdown, details, tags, summary) => {
+  // Anti-clustering: nudge suspiciously round scores by a deterministic,
+  // input-derived offset (mirrors the backend's spread()). Band-safe.
+  const spreadScore = (score, seed) => {
+    let s = clamp(score);
+    if (s % 5 !== 0) return s;
+    let h = 0;
+    const str = seed || 'x';
+    for (let i = 0; i < str.length; i++) { h = ((h << 5) - h + str.charCodeAt(i)) | 0; }
+    let n = s + (Math.abs(h) % 9) - 4; // -4 .. +4
+    if (s >= 70) n = Math.max(70, n);
+    else if (s >= 45) n = Math.min(69, Math.max(45, n));
+    else n = Math.min(44, n);
+    return clamp(n);
+  };
+
+  const recoOf = score => score >= 70
+    ? 'This looks safe to trust and share, but no automated check is perfect — for high-stakes decisions, confirm directly with the original source.'
+    : score >= 45
+    ? 'Hold off on sharing this. Search the claim on VERA Files, Rappler Fact Check, or Google Fact Check Explorer first, and treat it as unverified until confirmed.'
+    : "Do not share this content. If you've seen it circulating, check it against trusted fact-checkers — and consider reporting the post where you found it.";
+
+  const assemble = (score, confidence, inputType, breakdown, details, tags, summary, keyFindings) => {
     const v = verdictOf(score);
     const full = [
       { label: 'Input type', value: inputType },
@@ -322,7 +367,9 @@ function heuristicScanJS(payload) {
     ].concat(details);
     return { score: clamp(score), confidence: clamp(confidence), input_type: inputType,
              verdict: v.verdict, label: v.label, desc: v.desc,
-             breakdown, details: full, tags, summary, engine: 'heuristic' };
+             breakdown, details: full, tags, summary,
+             key_findings: keyFindings || [], recommendation: recoOf(score),
+             engine: 'heuristic' };
   };
 
   // ---- IMAGE ----
@@ -355,7 +402,19 @@ function heuristicScanJS(payload) {
     const details = [];
     if (filename) details.push({ label: 'File', value: filename });
     if (text) details.push({ label: 'Caption', value: text.slice(0, 80) });
-    return assemble(score, confidence, 'Image', breakdown, details, tags, summary);
+    const seed = filename + '|' + text;
+    score = spreadScore(score, seed);
+    breakdown.forEach(d => { d.value = spreadScore(d.value, seed + '::' + d.label); });
+    const findings = (aiHit || knownFalse) ? [
+      'The filename or caption itself signals AI generation or fabrication',
+      knownFalse ? ('Matches a known debunked claim: ' + knownFalse) : 'Provenance cannot be established for this image',
+      'Pixel-level inspection was NOT performed (AI vision engine is off)',
+    ] : [
+      'No AI-generation hints in the filename or caption',
+      'Pixel-level inspection was NOT performed (AI vision engine is off)',
+      'Authenticity, manipulation, and scene plausibility remain unverified',
+    ];
+    return assemble(score, confidence, 'Image', breakdown, details, tags, summary, findings);
   }
 
   // ---- ARTICLE / TEXT ----
@@ -414,7 +473,8 @@ function heuristicScanJS(payload) {
   if (capsRatio > 0.08) neutral -= 12;
 
   let verify = 40;
-  verify += Math.min(ATTRIB.filter(a => lower.includes(a)).length * 8, 32);
+  const attrHits = ATTRIB.filter(a => lower.includes(a)).length;
+  verify += Math.min(attrHits * 8, 32);
   if (isUrl || /https?:\/\//.test(text)) verify += 8;
   if (wc < 12 && !isUrl) verify -= 10;
   if (CREDIBLE[domain]) verify += 16;
@@ -458,16 +518,42 @@ function heuristicScanJS(payload) {
   if (bias === 'Satire') tags.push({ text: '✗ Satire / parody', kind: 'red' });
 
   const bits = [];
-  if (knownFalse) bits.push('This matches a known false or debunked claim: ' + knownFalse + '.');
-  else if (score >= 70) bits.push(publisher + ' shows strong credibility signals.');
-  else if (score >= 40) bits.push('The signals here are mixed — nothing confirms or debunks it outright.');
-  else bits.push('Several warning signs typical of low-quality or misleading content were found.');
-  if (clickHits || sensHits) bits.push('The wording leans on emotional or clickbait-style language.');
-  if (verify < 45 && !knownFalse) bits.push('Little sourcing or attribution was detected.');
-  if (confidence < 45) bits.push('Confidence is low because there was little to go on — treat this as a rough estimate.');
-  bits.push('This is an automated signal-based estimate; cross-check important claims with trusted fact-checkers.');
+  bits.push('Credify analyzed ' + (isUrl ? 'the linked article' : 'the submitted text claim')
+    + (publisher && publisher !== 'No source provided' ? ' from ' + publisher : '') + '.');
+  if (knownFalse) {
+    bits.push('It matches a known false or debunked claim: ' + knownFalse
+      + '. That alone caps the score in the lowest band, because repeating an already-debunked claim is one of the clearest markers of misinformation.');
+  } else if (score >= 70) {
+    bits.push('The strongest signals in its favor: a recognizable source, attribution cues, and language that stays largely neutral rather than emotional.');
+    bits.push('No debunked claims, clickbait framing, or sensational trigger words were detected.');
+  } else if (score >= 45) {
+    bits.push('Nothing here confirms or debunks the content outright. Some signals point each way, which is why it lands in the middle band rather than a confident verdict.');
+    bits.push(attrHits ? 'It does include some attribution, which helps, but not enough to verify the claims independently.'
+                       : 'It makes assertions without citing sources, officials, or data that could be independently checked.');
+  } else {
+    bits.push('Multiple warning signs typical of low-quality or misleading content were found, and they outweigh any positive signals.');
+  }
+  if (clickHits) bits.push('The wording uses ' + clickHits + ' clickbait-style pattern(s) — phrasing engineered for shares rather than accuracy.');
+  if (sensHits) bits.push(sensHits + ' sensational or conspiratorial term(s) appear, which credible reporting tends to avoid.');
+  if (verify < 45 && !knownFalse) bits.push("Little sourcing or attribution was detected, so the claims can't be traced back to anyone accountable.");
+  if (confidence < 45) bits.push('Confidence is low because there was little material to analyze — treat the score as a rough signal, not a ruling.');
+  bits.push('This is an automated, signal-based estimate; for anything important, cross-check with trusted fact-checkers such as VERA Files or FactCheck.org.');
 
-  return assemble(score, confidence, isUrl ? 'Article' : 'Text claim', breakdown, details, tags, bits.join(' '));
+  const seed = text;
+  score = spreadScore(score, seed);
+  confidence = spreadScore(confidence, seed + '::conf');
+  breakdown.forEach(d => { d.value = spreadScore(d.value, seed + '::' + d.label); });
+
+  const findings = ['Source: ' + publisher];
+  if (knownFalse) findings.push('Matches a known debunked claim: ' + knownFalse);
+  findings.push(attrHits
+    ? attrHits + ' attribution cue(s) found — quotes, officials, studies, or data'
+    : 'No attribution detected — nothing traces the claims to an accountable source');
+  if (clickHits) findings.push(clickHits + ' clickbait-style phrase(s) in the wording');
+  if (sensHits) findings.push(sensHits + ' sensational or conspiratorial term(s) used');
+  if (isUrl && !(clickHits || sensHits || knownFalse)) findings.push('Language stays largely neutral, with no emotional-manipulation patterns');
+
+  return assemble(score, confidence, isUrl ? 'Article' : 'Text claim', breakdown, details, tags, bits.join(' '), findings.slice(0, 6));
 }
 
 // ── File attachment ────────────────────────────────────────────
