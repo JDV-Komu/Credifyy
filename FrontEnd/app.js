@@ -187,6 +187,7 @@ async function runScan() {
   setTimeout(() => {
     renderResult(report);
     goto('screen-result-high');
+    saveReport(payload, report); // account users: persist to report history
   }, Math.max(0, 1200 - elapsed));
 }
 
@@ -734,6 +735,198 @@ function agreeTosFromModal() {
   clearError('register-error');
   closeTosModal();
 }
+
+// ── Google sign-in (OAuth via Supabase) ────────────────────────
+// Redirects to Google, then back to this page; the session is picked up
+// by onAuthStateChange below. Requires the Google provider to be enabled
+// in Supabase and the page to be served over http(s) — not file://.
+async function handleGoogleSignIn(fromRegister = false) {
+  const errId = fromRegister ? 'register-error' : 'login-error';
+  clearError(errId);
+
+  // Signing UP with Google still requires agreeing to the TOS first.
+  if (fromRegister) {
+    const agree = document.getElementById('tos-agree');
+    if (agree && !agree.checked) {
+      showError(errId, 'Please agree to the Terms of Service and Privacy Policy to continue.');
+      return;
+    }
+  }
+
+  if (window.location.protocol === 'file:') {
+    showError(errId, 'Google sign-in needs the site served over http — open it with Live Server (or any local server), not as a file.');
+    return;
+  }
+
+  try {
+    const { error } = await sbClient.auth.signInWithOAuth({
+      provider: 'google',
+      options: { redirectTo: window.location.origin + window.location.pathname }
+    });
+    if (error) showError(errId, error.message);
+    // On success the browser navigates away to Google — nothing more to do here.
+  } catch (e) {
+    showError(errId, 'Could not start Google sign-in. Is the Google provider enabled in Supabase?');
+  }
+}
+
+// ── Session handling (restores logins, catches OAuth redirects) ─
+function applySession(session) {
+  if (!session) return;
+  Auth.token = session.access_token;
+  Auth.user  = session.user;
+  updateAvatar(session.user.email);
+  loadReports();
+  // If we're on a public screen (fresh load, or just back from Google),
+  // move into the app.
+  const active = document.querySelector('.screen.active');
+  if (!active || ['screen-home', 'screen-login', 'screen-register', 'screen-otp'].includes(active.id)) {
+    goto('screen-home-auth');
+  }
+}
+
+sbClient.auth.onAuthStateChange((event, session) => {
+  if (event === 'SIGNED_IN' && session) applySession(session);
+  if (event === 'SIGNED_OUT') {
+    Auth.token = null;
+    Auth.user  = null;
+    reportsCache = [];
+    activeReportId = null;
+    refreshAvatars();
+    renderReportSidebar();
+  }
+});
+
+// Restore an existing session on page load (also catches the OAuth
+// redirect hash, which supabase-js parses automatically).
+(async function restoreSession() {
+  try {
+    const { data } = await sbClient.auth.getSession();
+    if (data && data.session) applySession(data.session);
+  } catch (e) { /* not signed in — that's fine */ }
+})();
+
+// ── Reports (account-only saved scan history) ──────────────────
+// Every scan a signed-in user runs is saved to the `reports` table in
+// Supabase (protected by row-level security, so users only ever see their
+// own). The results screen shows them in a left sidebar, grouped by day.
+// Guests get a locked panel instead.
+let reportsCache = [];
+let activeReportId = null;
+
+async function saveReport(payload, report) {
+  if (!Auth.isLoggedIn() || !Auth.user) return; // guests: nothing saved
+  const preview = payload && payload.filename
+    ? '🖼️ ' + payload.filename
+    : ((payload && payload.input) || '').slice(0, 140) || 'Untitled scan';
+  try {
+    const { data, error } = await sbClient.from('reports').insert({
+      user_id: Auth.user.id,
+      input_type: report.input_type || (payload && payload.image ? 'Image' : 'Text'),
+      input_preview: preview,
+      verdict: report.verdict || 'uncertain',
+      score: (typeof report.score === 'number') ? report.score : 0,
+      result: report
+    }).select().single();
+    if (error) { console.warn('[reports] save failed:', error.message); return; }
+    activeReportId = data ? data.id : null;
+    loadReports();
+  } catch (e) {
+    console.warn('[reports] save failed:', e);
+  }
+}
+
+async function loadReports() {
+  if (!Auth.isLoggedIn()) { renderReportSidebar(); return; }
+  try {
+    const { data, error } = await sbClient
+      .from('reports')
+      .select('id, created_at, input_type, input_preview, verdict, score, result')
+      .order('created_at', { ascending: false })
+      .limit(40);
+    if (error) {
+      console.warn('[reports] load failed:', error.message);
+      reportsCache = [];
+    } else {
+      reportsCache = data || [];
+    }
+  } catch (e) {
+    console.warn('[reports] load failed:', e);
+    reportsCache = [];
+  }
+  renderReportSidebar();
+}
+
+// "Today" / "Yesterday" / "Jul 10" style labels for grouping by day.
+function reportDayLabel(iso) {
+  const d = new Date(iso);
+  const now = new Date();
+  const startOf = x => new Date(x.getFullYear(), x.getMonth(), x.getDate()).getTime();
+  const days = Math.round((startOf(now) - startOf(d)) / 86400000);
+  if (days === 0) return 'Today';
+  if (days === 1) return 'Yesterday';
+  const opts = { month: 'short', day: 'numeric' };
+  if (d.getFullYear() !== now.getFullYear()) opts.year = 'numeric';
+  return d.toLocaleDateString(undefined, opts);
+}
+
+function renderReportSidebar() {
+  const list  = document.getElementById('rs-list');
+  const count = document.getElementById('rs-count');
+  if (!list) return;
+
+  // Guests: locked panel, no history.
+  if (!Auth.isLoggedIn()) {
+    if (count) count.textContent = '';
+    list.innerHTML =
+      '<div class="rs-locked">' +
+        '<div class="rs-lock-icon">🔒</div>' +
+        '<p>Report history is an account feature. Sign in and every report you run is saved here — scores and all — across days.</p>' +
+        '<button class="btn-submit rs-signin" onclick="goto(\'screen-login\')">Sign in</button>' +
+      '</div>';
+    return;
+  }
+
+  if (count) count.textContent = reportsCache.length ? String(reportsCache.length) : '';
+
+  if (!reportsCache.length) {
+    list.innerHTML = '<div class="rs-empty">No saved reports yet.<br>Run a check and it will appear here.</div>';
+    return;
+  }
+
+  let html = '', lastDay = '';
+  reportsCache.forEach(r => {
+    const day = reportDayLabel(r.created_at);
+    if (day !== lastDay) {
+      html += `<div class="rs-day">${escapeHtml(day)}</div>`;
+      lastDay = day;
+    }
+    const cls  = r.score >= 70 ? 'green' : r.score >= 40 ? 'yellow' : 'red';
+    const time = new Date(r.created_at).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+    html +=
+      `<div class="rs-item${r.id === activeReportId ? ' active' : ''}" onclick="openSavedReport('${r.id}')">` +
+        `<span class="rs-badge ${cls}">${r.score}</span>` +
+        `<span class="rs-meta">` +
+          `<span class="rs-preview">${escapeHtml(r.input_preview || 'Untitled')}</span>` +
+          `<span class="rs-sub">${escapeHtml(time)} · ${escapeHtml(r.input_type || 'Scan')}</span>` +
+        `</span>` +
+      `</div>`;
+  });
+  list.innerHTML = html;
+}
+
+// Clicking a saved report re-renders it into the results screen.
+function openSavedReport(id) {
+  const r = reportsCache.find(x => x.id === id);
+  if (!r || !r.result) return;
+  activeReportId = id;
+  renderResult(r.result);
+  renderReportSidebar();
+  goto('screen-result-high');
+}
+
+// Initial paint (locked panel for guests until a session is restored).
+renderReportSidebar();
 
 // ── Guest guards ───────────────────────────────────────────────
 // History and account settings require a real account. Guests are sent
