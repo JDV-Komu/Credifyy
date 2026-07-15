@@ -9,6 +9,9 @@ function goto(screenId) {
   if (target) {
     target.classList.add('active');
     window.scrollTo({ top: 0, behavior: 'smooth' });
+    // Captcha boxes have zero width while their screen is hidden, so they
+    // can't be scaled until now. Re-fit once this screen is visible.
+    if (typeof fitCaptchas === 'function') requestAnimationFrame(fitCaptchas);
   }
 }
 
@@ -184,6 +187,13 @@ async function runScan() {
   setTimeout(() => {
     renderResult(report);
     goto('screen-result-high');
+    currentReportMeta = {
+      preview: displayLabel,
+      score: report.score,
+      verdict: report.verdict,
+      report_id: null // filled in by saveReport once the row exists
+    };
+    saveReport(payload, report); // account users: persist to report history
   }, Math.max(0, 1200 - elapsed));
 }
 
@@ -276,6 +286,30 @@ function renderResult(r) {
                     : r.engine === 'gemini' ? 'Analysis by Gemini'
                     : 'Signal-based analysis';
   setText('rc-engine', engineLabel);
+
+  // Key findings (newer reports only — hide the box if absent)
+  const findBox = document.getElementById('rc-findings-box');
+  const findList = document.getElementById('rc-findings');
+  if (findBox && findList) {
+    const kf = Array.isArray(r.key_findings) ? r.key_findings : [];
+    findBox.style.display = kf.length ? '' : 'none';
+    findList.innerHTML = '';
+    kf.forEach(f => {
+      const li = document.createElement('li');
+      li.className = 'finding-item';
+      li.innerHTML = `<span class="finding-dot ${level}"></span><span>${escapeHtml(String(f))}</span>`;
+      findList.appendChild(li);
+    });
+  }
+
+  // Recommendation ("What you should do")
+  const recoBox = document.getElementById('rc-reco-box');
+  const recoEl  = document.getElementById('rc-reco');
+  if (recoBox && recoEl) {
+    recoBox.style.display = r.recommendation ? '' : 'none';
+    recoBox.className = `reco-box ${level}`;
+    recoEl.textContent = r.recommendation || '';
+  }
 }
 
 function escapeHtml(s) {
@@ -305,12 +339,33 @@ function heuristicScanJS(payload) {
   const matchFalse = s => { for (const [re, why] of KNOWN_FALSE) if (re.test(s || '')) return why; return null; };
 
   const verdictOf = score => score >= 70
-    ? { verdict: 'credible', label: 'Credible', desc: 'Strong credibility markers detected.' }
-    : score >= 40
-    ? { verdict: 'uncertain', label: 'Uncertain', desc: 'Mixed signals — verify with other sources.' }
-    : { verdict: 'not_credible', label: 'Not credible', desc: 'High likelihood of misinformation.' };
+    ? { verdict: 'credible', label: 'Not fake news — high confidence', desc: "We're confident this is NOT fake news. It shows strong sourcing and is consistent with known facts." }
+    : score >= 45
+    ? { verdict: 'uncertain', label: 'Unsure — verify before sharing', desc: 'The signals are mixed. Treat this with caution and verify with trusted sources before believing or sharing it.' }
+    : { verdict: 'not_credible', label: 'Likely fake news — high confidence', desc: 'Highly confident this is fake news or misleading — but double-check with a trusted fact-checker to be certain.' };
 
-  const assemble = (score, confidence, inputType, breakdown, details, tags, summary) => {
+  // Anti-clustering: nudge suspiciously round scores by a deterministic,
+  // input-derived offset (mirrors the backend's spread()). Band-safe.
+  const spreadScore = (score, seed) => {
+    let s = clamp(score);
+    if (s % 5 !== 0) return s;
+    let h = 0;
+    const str = seed || 'x';
+    for (let i = 0; i < str.length; i++) { h = ((h << 5) - h + str.charCodeAt(i)) | 0; }
+    let n = s + (Math.abs(h) % 9) - 4; // -4 .. +4
+    if (s >= 70) n = Math.max(70, n);
+    else if (s >= 45) n = Math.min(69, Math.max(45, n));
+    else n = Math.min(44, n);
+    return clamp(n);
+  };
+
+  const recoOf = score => score >= 70
+    ? 'This looks safe to trust and share, but no automated check is perfect — for high-stakes decisions, confirm directly with the original source.'
+    : score >= 45
+    ? 'Hold off on sharing this. Search the claim on VERA Files, Rappler Fact Check, or Google Fact Check Explorer first, and treat it as unverified until confirmed.'
+    : "Do not share this content. If you've seen it circulating, check it against trusted fact-checkers — and consider reporting the post where you found it.";
+
+  const assemble = (score, confidence, inputType, breakdown, details, tags, summary, keyFindings) => {
     const v = verdictOf(score);
     const full = [
       { label: 'Input type', value: inputType },
@@ -318,7 +373,9 @@ function heuristicScanJS(payload) {
     ].concat(details);
     return { score: clamp(score), confidence: clamp(confidence), input_type: inputType,
              verdict: v.verdict, label: v.label, desc: v.desc,
-             breakdown, details: full, tags, summary, engine: 'heuristic' };
+             breakdown, details: full, tags, summary,
+             key_findings: keyFindings || [], recommendation: recoOf(score),
+             engine: 'heuristic' };
   };
 
   // ---- IMAGE ----
@@ -351,7 +408,19 @@ function heuristicScanJS(payload) {
     const details = [];
     if (filename) details.push({ label: 'File', value: filename });
     if (text) details.push({ label: 'Caption', value: text.slice(0, 80) });
-    return assemble(score, confidence, 'Image', breakdown, details, tags, summary);
+    const seed = filename + '|' + text;
+    score = spreadScore(score, seed);
+    breakdown.forEach(d => { d.value = spreadScore(d.value, seed + '::' + d.label); });
+    const findings = (aiHit || knownFalse) ? [
+      'The filename or caption itself signals AI generation or fabrication',
+      knownFalse ? ('Matches a known debunked claim: ' + knownFalse) : 'Provenance cannot be established for this image',
+      'Pixel-level inspection was NOT performed (AI vision engine is off)',
+    ] : [
+      'No AI-generation hints in the filename or caption',
+      'Pixel-level inspection was NOT performed (AI vision engine is off)',
+      'Authenticity, manipulation, and scene plausibility remain unverified',
+    ];
+    return assemble(score, confidence, 'Image', breakdown, details, tags, summary, findings);
   }
 
   // ---- ARTICLE / TEXT ----
@@ -410,7 +479,8 @@ function heuristicScanJS(payload) {
   if (capsRatio > 0.08) neutral -= 12;
 
   let verify = 40;
-  verify += Math.min(ATTRIB.filter(a => lower.includes(a)).length * 8, 32);
+  const attrHits = ATTRIB.filter(a => lower.includes(a)).length;
+  verify += Math.min(attrHits * 8, 32);
   if (isUrl || /https?:\/\//.test(text)) verify += 8;
   if (wc < 12 && !isUrl) verify -= 10;
   if (CREDIBLE[domain]) verify += 16;
@@ -454,16 +524,42 @@ function heuristicScanJS(payload) {
   if (bias === 'Satire') tags.push({ text: '✗ Satire / parody', kind: 'red' });
 
   const bits = [];
-  if (knownFalse) bits.push('This matches a known false or debunked claim: ' + knownFalse + '.');
-  else if (score >= 70) bits.push(publisher + ' shows strong credibility signals.');
-  else if (score >= 40) bits.push('The signals here are mixed — nothing confirms or debunks it outright.');
-  else bits.push('Several warning signs typical of low-quality or misleading content were found.');
-  if (clickHits || sensHits) bits.push('The wording leans on emotional or clickbait-style language.');
-  if (verify < 45 && !knownFalse) bits.push('Little sourcing or attribution was detected.');
-  if (confidence < 45) bits.push('Confidence is low because there was little to go on — treat this as a rough estimate.');
-  bits.push('This is an automated signal-based estimate; cross-check important claims with trusted fact-checkers.');
+  bits.push('Credify analyzed ' + (isUrl ? 'the linked article' : 'the submitted text claim')
+    + (publisher && publisher !== 'No source provided' ? ' from ' + publisher : '') + '.');
+  if (knownFalse) {
+    bits.push('It matches a known false or debunked claim: ' + knownFalse
+      + '. That alone caps the score in the lowest band, because repeating an already-debunked claim is one of the clearest markers of misinformation.');
+  } else if (score >= 70) {
+    bits.push('The strongest signals in its favor: a recognizable source, attribution cues, and language that stays largely neutral rather than emotional.');
+    bits.push('No debunked claims, clickbait framing, or sensational trigger words were detected.');
+  } else if (score >= 45) {
+    bits.push('Nothing here confirms or debunks the content outright. Some signals point each way, which is why it lands in the middle band rather than a confident verdict.');
+    bits.push(attrHits ? 'It does include some attribution, which helps, but not enough to verify the claims independently.'
+                       : 'It makes assertions without citing sources, officials, or data that could be independently checked.');
+  } else {
+    bits.push('Multiple warning signs typical of low-quality or misleading content were found, and they outweigh any positive signals.');
+  }
+  if (clickHits) bits.push('The wording uses ' + clickHits + ' clickbait-style pattern(s) — phrasing engineered for shares rather than accuracy.');
+  if (sensHits) bits.push(sensHits + ' sensational or conspiratorial term(s) appear, which credible reporting tends to avoid.');
+  if (verify < 45 && !knownFalse) bits.push("Little sourcing or attribution was detected, so the claims can't be traced back to anyone accountable.");
+  if (confidence < 45) bits.push('Confidence is low because there was little material to analyze — treat the score as a rough signal, not a ruling.');
+  bits.push('This is an automated, signal-based estimate; for anything important, cross-check with trusted fact-checkers such as VERA Files or FactCheck.org.');
 
-  return assemble(score, confidence, isUrl ? 'Article' : 'Text claim', breakdown, details, tags, bits.join(' '));
+  const seed = text;
+  score = spreadScore(score, seed);
+  confidence = spreadScore(confidence, seed + '::conf');
+  breakdown.forEach(d => { d.value = spreadScore(d.value, seed + '::' + d.label); });
+
+  const findings = ['Source: ' + publisher];
+  if (knownFalse) findings.push('Matches a known debunked claim: ' + knownFalse);
+  findings.push(attrHits
+    ? attrHits + ' attribution cue(s) found — quotes, officials, studies, or data'
+    : 'No attribution detected — nothing traces the claims to an accountable source');
+  if (clickHits) findings.push(clickHits + ' clickbait-style phrase(s) in the wording');
+  if (sensHits) findings.push(sensHits + ' sensational or conspiratorial term(s) used');
+  if (isUrl && !(clickHits || sensHits || knownFalse)) findings.push('Language stays largely neutral, with no emotional-manipulation patterns');
+
+  return assemble(score, confidence, isUrl ? 'Article' : 'Text claim', breakdown, details, tags, bits.join(' '), findings.slice(0, 6));
 }
 
 // ── File attachment ────────────────────────────────────────────
@@ -645,6 +741,386 @@ const Auth = {
 let pendingSignup = null;  // { email, password } awaiting OTP verification
 let resetEmail = '';       // email awaiting password-reset OTP
 
+// ── CAPTCHA (Cloudflare Turnstile) ─────────────────────────────
+// The site key should live in config.js (like SUPABASE_URL). If it's not
+// defined we fall back to Cloudflare's public TEST key, which renders a
+// widget that always passes — handy for local dev before Turnstile is
+// configured. Replace with your real key + enable in Supabase for prod.
+const TURNSTILE_KEY = (typeof TURNSTILE_SITE_KEY !== 'undefined')
+  ? TURNSTILE_SITE_KEY
+  : '1x00000000000000000000AA'; // test key: always passes
+
+const captchaWidgets = {}; // container id -> turnstile widget id
+
+function renderCaptchas() {
+  // Turnstile loads async; retry until it's available.
+  if (!window.turnstile) { setTimeout(renderCaptchas, 250); return; }
+  ['captcha-login', 'captcha-register', 'captcha-otp', 'captcha-forgot', 'captcha-reset']
+    .forEach(id => {
+      const el = document.getElementById(id);
+      if (el && !(id in captchaWidgets)) {
+        captchaWidgets[id] = turnstile.render(el, {
+          sitekey: TURNSTILE_KEY,
+          theme: 'dark',
+        });
+      }
+    });
+  // The widget's iframe appears a beat after render(); fit once it's there.
+  fitCaptchas();
+  setTimeout(fitCaptchas, 400);
+}
+renderCaptchas();
+
+// Scale each widget so it exactly fills its container width — full-width on
+// desktop (matching the inputs) and shrunk to fit on narrow screens so it
+// never overflows the card. Turnstile's natural size is 300 x 65.
+function fitCaptchas() {
+  document.querySelectorAll('.captcha-box').forEach(box => {
+    const inner = box.querySelector('.captcha-inner');
+    if (!inner) return;
+    const avail = box.clientWidth;
+    if (!avail) return;
+    const scale = avail / 300;
+    inner.style.transform = `scale(${scale})`;
+    box.style.height = `${65 * scale}px`; // collapse the gap left by scaling
+  });
+}
+
+// Re-fit on resize / orientation change.
+window.addEventListener('resize', fitCaptchas);
+
+function getCaptchaToken(id) {
+  const w = captchaWidgets[id];
+  if (w === undefined || !window.turnstile) return '';
+  return turnstile.getResponse(w) || '';
+}
+
+// Turnstile tokens are single-use: reset the widget after every auth
+// attempt (success OR failure) so the user can try again.
+function resetCaptcha(id) {
+  const w = captchaWidgets[id];
+  if (w !== undefined && window.turnstile) turnstile.reset(w);
+}
+
+// ── Terms of Service modal ─────────────────────────────────────
+function openTosModal(tab = 'tos') {
+  switchTosTab(tab);
+  document.getElementById('tos-modal').classList.add('open');
+}
+
+function closeTosModal() {
+  document.getElementById('tos-modal').classList.remove('open');
+}
+
+function switchTosTab(tab) {
+  const showPrivacy = tab === 'privacy';
+  document.getElementById('tos-content').style.display     = showPrivacy ? 'none' : 'block';
+  document.getElementById('privacy-content').style.display = showPrivacy ? 'block' : 'none';
+  document.getElementById('tab-tos').classList.toggle('active', !showPrivacy);
+  document.getElementById('tab-privacy').classList.toggle('active', showPrivacy);
+}
+
+// "I agree" inside the modal ticks the checkbox and closes the modal.
+function agreeTosFromModal() {
+  const box = document.getElementById('tos-agree');
+  if (box) box.checked = true;
+  clearError('register-error');
+  closeTosModal();
+}
+
+// ── Google sign-in (OAuth via Supabase) ────────────────────────
+// Redirects to Google, then back to this page; the session is picked up
+// by onAuthStateChange below. Requires the Google provider to be enabled
+// in Supabase and the page to be served over http(s) — not file://.
+async function handleGoogleSignIn(fromRegister = false) {
+  const errId = fromRegister ? 'register-error' : 'login-error';
+  clearError(errId);
+
+  // Signing UP with Google still requires agreeing to the TOS first.
+  if (fromRegister) {
+    const agree = document.getElementById('tos-agree');
+    if (agree && !agree.checked) {
+      showError(errId, 'Please agree to the Terms of Service and Privacy Policy to continue.');
+      return;
+    }
+  }
+
+  if (window.location.protocol === 'file:') {
+    showError(errId, 'Google sign-in needs the site served over http — open it with Live Server (or any local server), not as a file.');
+    return;
+  }
+
+  try {
+    const { error } = await sbClient.auth.signInWithOAuth({
+      provider: 'google',
+      options: { redirectTo: window.location.origin + window.location.pathname }
+    });
+    if (error) showError(errId, error.message);
+    // On success the browser navigates away to Google — nothing more to do here.
+  } catch (e) {
+    showError(errId, 'Could not start Google sign-in. Is the Google provider enabled in Supabase?');
+  }
+}
+
+// ── Session handling (restores logins, catches OAuth redirects) ─
+function applySession(session) {
+  if (!session) return;
+  Auth.token = session.access_token;
+  Auth.user  = session.user;
+  updateAvatar(session.user.email);
+  loadReports();
+  checkAdminRole();
+  // If we're on a public screen (fresh load, or just back from Google),
+  // move into the app.
+  const active = document.querySelector('.screen.active');
+  if (!active || ['screen-home', 'screen-login', 'screen-register', 'screen-otp'].includes(active.id)) {
+    goto('screen-home-auth');
+  }
+}
+
+// Show the Admin button only for accounts with the admin role.
+// (The role itself is granted via `select make_admin('email')` in the
+// Supabase SQL editor — it can never be self-assigned from the app,
+// and RLS enforces the real security server-side regardless of the UI.)
+async function checkAdminRole() {
+  Auth.isAdmin = false;
+  try {
+    const { data } = await sbClient.from('user_roles')
+      .select('role').eq('user_id', Auth.user.id).maybeSingle();
+    Auth.isAdmin = !!(data && data.role === 'admin');
+  } catch (e) { /* table may not exist yet — treat as non-admin */ }
+  document.querySelectorAll('.nav-admin-btn')
+    .forEach(b => { b.style.display = Auth.isAdmin ? '' : 'none'; });
+}
+
+sbClient.auth.onAuthStateChange((event, session) => {
+  if (event === 'SIGNED_IN' && session) applySession(session);
+  if (event === 'SIGNED_OUT') {
+    Auth.token = null;
+    Auth.user  = null;
+    Auth.isAdmin = false;
+    document.querySelectorAll('.nav-admin-btn').forEach(b => { b.style.display = 'none'; });
+    reportsCache = [];
+    activeReportId = null;
+    refreshAvatars();
+    renderReportSidebar();
+  }
+});
+
+// Restore an existing session on page load (also catches the OAuth
+// redirect hash, which supabase-js parses automatically).
+(async function restoreSession() {
+  try {
+    const { data } = await sbClient.auth.getSession();
+    if (data && data.session) applySession(data.session);
+  } catch (e) { /* not signed in — that's fine */ }
+})();
+
+// ── Reports (account-only saved scan history) ──────────────────
+// Every scan a signed-in user runs is saved to the `reports` table in
+// Supabase (protected by row-level security, so users only ever see their
+// own). The results screen shows them in a left sidebar, grouped by day.
+// Guests get a locked panel instead.
+let reportsCache = [];
+let activeReportId = null;
+
+async function saveReport(payload, report) {
+  if (!Auth.isLoggedIn() || !Auth.user) return; // guests: nothing saved
+  const preview = payload && payload.filename
+    ? '🖼️ ' + payload.filename
+    : ((payload && payload.input) || '').slice(0, 140) || 'Untitled scan';
+  try {
+    const { data, error } = await sbClient.from('reports').insert({
+      user_id: Auth.user.id,
+      input_type: report.input_type || (payload && payload.image ? 'Image' : 'Text'),
+      input_preview: preview,
+      verdict: report.verdict || 'uncertain',
+      score: (typeof report.score === 'number') ? report.score : 0,
+      result: report
+    }).select().single();
+    if (error) { console.warn('[reports] save failed:', error.message); return; }
+    activeReportId = data ? data.id : null;
+    if (currentReportMeta && data) currentReportMeta.report_id = data.id;
+    loadReports();
+  } catch (e) {
+    console.warn('[reports] save failed:', e);
+  }
+}
+
+async function loadReports() {
+  if (!Auth.isLoggedIn()) { renderReportSidebar(); return; }
+  try {
+    const { data, error } = await sbClient
+      .from('reports')
+      .select('id, created_at, input_type, input_preview, verdict, score, result')
+      .order('created_at', { ascending: false })
+      .limit(40);
+    if (error) {
+      console.warn('[reports] load failed:', error.message);
+      reportsCache = [];
+    } else {
+      reportsCache = data || [];
+    }
+  } catch (e) {
+    console.warn('[reports] load failed:', e);
+    reportsCache = [];
+  }
+  renderReportSidebar();
+}
+
+// "Today" / "Yesterday" / "Jul 10" style labels for grouping by day.
+function reportDayLabel(iso) {
+  const d = new Date(iso);
+  const now = new Date();
+  const startOf = x => new Date(x.getFullYear(), x.getMonth(), x.getDate()).getTime();
+  const days = Math.round((startOf(now) - startOf(d)) / 86400000);
+  if (days === 0) return 'Today';
+  if (days === 1) return 'Yesterday';
+  const opts = { month: 'short', day: 'numeric' };
+  if (d.getFullYear() !== now.getFullYear()) opts.year = 'numeric';
+  return d.toLocaleDateString(undefined, opts);
+}
+
+function renderReportSidebar() {
+  const list  = document.getElementById('rs-list');
+  const count = document.getElementById('rs-count');
+  if (!list) return;
+
+  // Guests: locked panel, no history.
+  if (!Auth.isLoggedIn()) {
+    if (count) count.textContent = '';
+    list.innerHTML =
+      '<div class="rs-locked">' +
+        '<div class="rs-lock-icon">🔒</div>' +
+        '<p>Report history is an account feature. Sign in and every report you run is saved here — scores and all — across days.</p>' +
+        '<button class="btn-submit rs-signin" onclick="goto(\'screen-login\')">Sign in</button>' +
+      '</div>';
+    return;
+  }
+
+  if (count) count.textContent = reportsCache.length ? String(reportsCache.length) : '';
+
+  if (!reportsCache.length) {
+    list.innerHTML = '<div class="rs-empty">No saved reports yet.<br>Run a check and it will appear here.</div>';
+    return;
+  }
+
+  let html = '', lastDay = '';
+  reportsCache.forEach(r => {
+    const day = reportDayLabel(r.created_at);
+    if (day !== lastDay) {
+      html += `<div class="rs-day">${escapeHtml(day)}</div>`;
+      lastDay = day;
+    }
+    const cls  = r.score >= 70 ? 'green' : r.score >= 40 ? 'yellow' : 'red';
+    const time = new Date(r.created_at).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+    html +=
+      `<div class="rs-item${r.id === activeReportId ? ' active' : ''}" onclick="openSavedReport('${r.id}')">` +
+        `<span class="rs-badge ${cls}">${r.score}</span>` +
+        `<span class="rs-meta">` +
+          `<span class="rs-preview">${escapeHtml(r.input_preview || 'Untitled')}</span>` +
+          `<span class="rs-sub">${escapeHtml(time)} · ${escapeHtml(r.input_type || 'Scan')}</span>` +
+        `</span>` +
+      `</div>`;
+  });
+  list.innerHTML = html;
+}
+
+// Clicking a saved report re-renders it into the results screen.
+function openSavedReport(id) {
+  const r = reportsCache.find(x => x.id === id);
+  if (!r || !r.result) return;
+  activeReportId = id;
+  currentReportMeta = { preview: r.input_preview, score: r.score, verdict: r.verdict, report_id: r.id };
+  renderResult(r.result);
+  renderReportSidebar();
+  goto('screen-result-high');
+}
+
+// Initial paint (locked panel for guests until a session is restored).
+renderReportSidebar();
+
+// ── Flag flow (the ⚑ button finally records something) ─────────
+// What's currently on the results screen, so a flag can reference it.
+let currentReportMeta = null;
+
+function openFlagForm() {
+  if (!Auth.isLoggedIn()) {
+    goto('screen-login');
+    showError('login-error', 'Sign in to flag a result — flags are tied to your account.');
+    return;
+  }
+  const ctx = document.getElementById('flag-context');
+  if (ctx) {
+    if (currentReportMeta) {
+      const cls = currentReportMeta.score >= 70 ? 'green' : currentReportMeta.score >= 45 ? 'yellow' : 'red';
+      ctx.innerHTML =
+        `<span class="rs-badge ${cls}">${currentReportMeta.score}</span>` +
+        `<span class="flag-ctx-preview">${escapeHtml(currentReportMeta.preview || 'Current result')}</span>`;
+      ctx.style.display = '';
+    } else {
+      ctx.style.display = 'none';
+    }
+  }
+  const box = document.getElementById('flag-reason');
+  if (box) box.value = '';
+  clearError('flag-error');
+  goto('screen-flag-form');
+}
+
+async function submitFlag() {
+  const reason = (document.getElementById('flag-reason').value || '').trim();
+  if (reason.length < 10) {
+    showError('flag-error', 'Please describe the issue in a bit more detail (at least 10 characters).');
+    return;
+  }
+  const btn = document.querySelector('#screen-flag-form .btn-submit');
+  btn.textContent = 'Submitting…'; btn.disabled = true;
+  try {
+    const { error } = await sbClient.from('flags').insert({
+      user_id: Auth.user.id,
+      report_id: (currentReportMeta && currentReportMeta.report_id) || null,
+      content_preview: (currentReportMeta && currentReportMeta.preview) || null,
+      score: (currentReportMeta && typeof currentReportMeta.score === 'number') ? currentReportMeta.score : null,
+      verdict: (currentReportMeta && currentReportMeta.verdict) || null,
+      reason: reason,
+      status: 'pending'
+    });
+    if (error) { showError('flag-error', error.message); return; }
+    goto('screen-flag'); // the existing success screen — now it's telling the truth
+  } catch (e) {
+    showError('flag-error', 'Could not submit. Is Supabase reachable?');
+  } finally {
+    btn.textContent = 'Submit flag'; btn.disabled = false;
+  }
+}
+
+// ── Public Trends page: load live rows from the trends table ───
+// Falls back silently to the hardcoded cards if the table is empty
+// or not created yet.
+async function loadTrends() {
+  try {
+    const { data, error } = await sbClient.from('trends')
+      .select('topic, flagged_count, pct')
+      .order('flagged_count', { ascending: false });
+    if (error || !data || !data.length) return;
+    const grid = document.getElementById('trends-grid');
+    if (!grid) return;
+    const colorOf = p => p >= 80 ? '#F87171' : p >= 60 ? '#FACC15' : p >= 35 ? '#A78BFA' : '#4ADE80';
+    grid.innerHTML = data.map(t =>
+      `<div class="trend-card">` +
+        `<div class="trend-topic">${escapeHtml(t.topic)}</div>` +
+        `<div class="trend-count">${Number(t.flagged_count).toLocaleString()}</div>` +
+        `<div class="trend-lbl">flagged articles</div>` +
+        `<div class="trend-bar-row"><div class="trend-bar-track">` +
+          `<div class="trend-bar-fill" style="width:${clampPct(t.pct)}%;background:${colorOf(t.pct)};"></div>` +
+        `</div><span class="trend-pct">${clampPct(t.pct)}%</span></div>` +
+      `</div>`).join('');
+  } catch (e) { /* keep hardcoded fallback */ }
+}
+function clampPct(p) { return Math.max(0, Math.min(100, Number(p) || 0)); }
+loadTrends();
+
 // ── Guest guards ───────────────────────────────────────────────
 // History and account settings require a real account. Guests are sent
 // to the login screen with a short explanation.
@@ -706,6 +1182,20 @@ async function handleRegister() {
     showError('register-error', 'Password must be at least 6 characters.'); return;
   }
 
+  // Gate 1: must agree to the Terms of Service before anything is sent.
+  if (!document.getElementById('tos-agree').checked) {
+    showError('register-error', 'Please agree to the Terms of Service and Privacy Policy to continue.');
+    return;
+  }
+
+  // Gate 2: captcha must be solved BEFORE the OTP email is triggered —
+  // this protects the email-send endpoint from bots.
+  const captchaToken = getCaptchaToken('captcha-register');
+  if (!captchaToken) {
+    showError('register-error', 'Please complete the captcha.');
+    return;
+  }
+
   const btn = document.querySelector('#screen-register .btn-submit');
   const orig = btn.innerHTML;
   btn.textContent = 'Sending code…';
@@ -714,28 +1204,34 @@ async function handleRegister() {
 
   try {
     // Creates the user (unconfirmed) and emails a 6-digit code.
+    // The captcha token is verified server-side by Supabase before the
+    // email is sent, so bots can't trigger sends by calling the API directly.
     const { data, error } = await sbClient.auth.signUp({
       email,
       password,
+<<<<<<< HEAD
       options: { 
         data: { account_name },
         captchaToken 
       }
+=======
+      options: { data: { account_name }, captchaToken }
+>>>>>>> d6b88760e4fa56a384e53153d4a87884dee546f1
     });
 
     if (error) {
         if (error.message.toLowerCase().includes('already registered') || 
           error.message.toLowerCase().includes('already exists')) {
           
-          // Resend confirmation email by calling signUp again
-          await sbClient.auth.signUp({ email, password });
-          
+          // NOTE: we can't just call signUp again here to resend — the
+          // captcha token was consumed by the first call. Send the user to
+          // the OTP screen, where "Resend code" has its own captcha.
           pendingSignup = { email, password };
           document.getElementById('otp-target-email').textContent = email;
           document.getElementById('otp-code').value = '';
           clearError('otp-error');
           goto('screen-otp');
-          showError('otp-error', 'Account exists but is unconfirmed. A new code has been sent.');
+          showError('otp-error', 'Account exists but is unconfirmed. Solve the captcha below and tap "Resend code".');
           return;
         }
       showError('register-error', error.message); return;
@@ -764,6 +1260,7 @@ async function handleRegister() {
     turnstile.reset();
     btn.innerHTML = orig;
     btn.disabled = false;
+    resetCaptcha('captcha-register'); // token is single-use
   }
 }
 
@@ -826,6 +1323,12 @@ async function verifySignupOtp() {
 
 async function resendSignupOtp() {
   if (!pendingSignup || !pendingSignup.email) return;
+
+  const captchaToken = getCaptchaToken('captcha-otp');
+  if (!captchaToken) {
+    showError('otp-error', 'Please complete the captcha to resend the code.'); return;
+  }
+
   const link = document.getElementById('otp-resend');
   const orig = link ? link.textContent : '';
   if (link) link.textContent = 'Sending…';
@@ -835,12 +1338,14 @@ async function resendSignupOtp() {
     const { error } = await sbClient.auth.signUp({
       email: pendingSignup.email,
       password: pendingSignup.password,
+      options: { captchaToken }
     });
     showError('otp-error', error ? error.message : '✓ New code sent.');
   } catch (e) {
     showError('otp-error', 'Could not resend. Is Supabase running?');
   } finally {
     if (link) setTimeout(() => { link.textContent = orig; }, 1500);
+    resetCaptcha('captcha-otp'); // token is single-use
   }
 }
 
@@ -855,12 +1360,19 @@ async function sendResetCode() {
 
   if (!email) { showError(errId, 'Please enter your email.'); return; }
 
+  // Pick the captcha widget on whichever screen we're on.
+  const captchaId = onReset ? 'captcha-reset' : 'captcha-forgot';
+  const captchaToken = getCaptchaToken(captchaId);
+  if (!captchaToken) {
+    showError(errId, 'Please complete the captcha.'); return;
+  }
+
   const btn = onReset ? null : document.querySelector('#screen-forgot .btn-submit');
   let orig;
   if (btn) { orig = btn.innerHTML; btn.textContent = 'Sending…'; btn.disabled = true; }
 
   try {
-    const { error } = await sbClient.auth.resetPasswordForEmail(email);
+    const { error } = await sbClient.auth.resetPasswordForEmail(email, { captchaToken });
     if (error) { showError(errId, error.message); return; }
 
     resetEmail = email;
@@ -878,6 +1390,7 @@ async function sendResetCode() {
     showError(errId, 'Could not connect to Supabase. Is it running?');
   } finally {
     if (btn) { btn.innerHTML = orig; btn.disabled = false; }
+    resetCaptcha(captchaId); // token is single-use
   }
 }
 
@@ -941,15 +1454,27 @@ async function handleLogin() {
     showError('login-error', 'Please enter your email and password.'); return;
   }
 
+  const captchaToken = getCaptchaToken('captcha-login');
+  if (!captchaToken) {
+    showError('login-error', 'Please complete the captcha.'); return;
+  }
+
   const btn = document.querySelector('#screen-login .btn-submit');
   btn.textContent = 'Signing in…';
   btn.disabled = true;
 
   try {
+<<<<<<< HEAD
     const { data, error } = await sbClient.auth.signInWithPassword({ 
       email, 
       password,
       options: {captchaToken} 
+=======
+    const { data, error } = await sbClient.auth.signInWithPassword({
+      email,
+      password,
+      options: { captchaToken }
+>>>>>>> d6b88760e4fa56a384e53153d4a87884dee546f1
     });
 
     if (error) {
@@ -967,6 +1492,7 @@ async function handleLogin() {
     turnstile.reset();
     btn.textContent = 'Sign in';
     btn.disabled = false;
+    resetCaptcha('captcha-login'); // token is single-use
   }
 }
 

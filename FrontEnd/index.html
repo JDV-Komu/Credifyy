@@ -117,6 +117,8 @@
         </div>
       </div>
 
+      <div class="captcha-box"><div class="captcha-inner" id="captcha-login"></div></div>
+
       <p class="form-error" id="login-error"></p>
       <button class="btn-submit" onclick="handleLogin()">
         Sign in
@@ -130,7 +132,7 @@
       </div>
 
       <div class="oauth-row">
-        <button class="btn-oauth" onclick="goto('screen-home-auth')">
+        <button class="btn-oauth" onclick="handleGoogleSignIn(false)">
           <svg width="16" height="16" viewBox="0 0 24 24"><path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4"/><path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853"/><path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" fill="#FBBC05"/><path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335"/></svg>
           Continue with Google
         </button>
@@ -198,6 +200,16 @@
         </div>
       </div>
 
+      <div class="tos-row">
+        <input type="checkbox" id="tos-agree" class="tos-check"/>
+        <label for="tos-agree" class="tos-label">
+          I agree to the <span class="form-link" onclick="event.preventDefault(); openTosModal()">Terms of Service</span>
+          and <span class="form-link" onclick="event.preventDefault(); openTosModal('privacy')">Privacy Policy</span>
+        </label>
+      </div>
+
+      <div class="captcha-box"><div class="captcha-inner" id="captcha-register"></div></div>
+
       <p class="form-error" id="register-error"></p>
       <button class="btn-submit" onclick="handleRegister()">
         Create account
@@ -211,7 +223,7 @@
       </div>
 
       <div class="oauth-row">
-        <button class="btn-oauth" onclick="goto('screen-home-auth')">
+        <button class="btn-oauth" onclick="handleGoogleSignIn(true)">
           <svg width="16" height="16" viewBox="0 0 24 24"><path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4"/><path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853"/><path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" fill="#FBBC05"/><path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335"/></svg>
           Sign up with Google
         </button>
@@ -251,6 +263,7 @@
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>
       </button>
 
+      <div class="captcha-box captcha-compact"><div class="captcha-inner" id="captcha-otp"></div></div>
       <p class="form-footnote">Didn't get the code? <span class="form-link" id="otp-resend" onclick="resendSignupOtp()">Resend code</span></p>
       <p class="form-footnote" style="margin-top:6px"><span class="form-link dim" onclick="goto('screen-register')">← Back</span></p>
     </div>
@@ -274,6 +287,8 @@
         <label class="field-label">Email address</label>
         <input type="email" class="field-input" id="forgot-email" placeholder="you@example.com" autocomplete="email"/>
       </div>
+
+      <div class="captcha-box"><div class="captcha-inner" id="captcha-forgot"></div></div>
 
       <p class="form-error" id="forgot-error"></p>
       <button class="btn-submit" onclick="sendResetCode()">
@@ -320,6 +335,7 @@
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>
       </button>
 
+      <div class="captcha-box captcha-compact"><div class="captcha-inner" id="captcha-reset"></div></div>
       <p class="form-footnote">Didn't get the code? <span class="form-link" onclick="sendResetCode()">Resend</span></p>
     </div>
   </main>
@@ -332,6 +348,7 @@
     <div class="nav-right">
       <button class="btn-ghost" onclick="openHistory()">History</button>
       <button class="btn-ghost" onclick="goto('screen-trends')">Trends</button>
+      <button class="btn-ghost nav-admin-btn" style="display:none" onclick="openAdmin()">🛡 Admin</button>
       <div class="avatar" onclick="openProfile()">👤</div>
     </div>
   </nav>
@@ -424,7 +441,18 @@
       <div class="avatar" onclick="openProfile()">👤</div>
     </div>
   </nav>
-  <main class="result-section">
+  <main class="result-section result-with-sidebar">
+    <aside class="report-sidebar" id="report-sidebar">
+      <div class="rs-head">
+        <span class="rs-title">Report history</span>
+        <span class="rs-count" id="rs-count"></span>
+      </div>
+      <div class="rs-list" id="rs-list">
+        <!-- Filled by JS: saved reports for signed-in users, locked state for guests -->
+      </div>
+    </aside>
+
+    <div class="result-main">
     <div class="score-card high" id="rc-card">
       <div class="score-circle high" id="rc-circle">98</div>
       <div class="score-info">
@@ -453,16 +481,27 @@
       </div>
     </div>
 
+    <div class="info-box" style="margin-bottom:20px" id="rc-findings-box">
+      <div class="box-title">Key findings</div>
+      <ul class="findings-list" id="rc-findings"></ul>
+    </div>
+
     <div class="info-box" style="margin-bottom:20px">
       <div class="box-title">Analysis summary <span id="rc-engine" style="font-size:11px;font-weight:400;color:var(--text3);text-transform:none;letter-spacing:0">Signal-based analysis</span></div>
       <div class="box-text" id="rc-summary">—</div>
     </div>
 
+    <div class="reco-box" id="rc-reco-box" style="margin-bottom:20px">
+      <div class="box-title">What you should do</div>
+      <div class="reco-text" id="rc-reco">—</div>
+    </div>
+
     <div class="action-bar">
       <button class="btn-recheck" onclick="runScan()">↺ Re-check</button>
       <button class="btn-share">↗ Share report</button>
-      <button class="btn-outline-purple" onclick="goto('screen-flag')">⚑ Flag issue</button>
+      <button class="btn-outline-purple" onclick="openFlagForm()">⚑ Flag issue</button>
     </div>
+    </div><!-- /result-main -->
   </main>
 </div>
 
@@ -496,7 +535,7 @@
     <div class="action-bar">
       <button class="btn-recheck" onclick="goto('screen-loading')">↺ Re-check</button>
       <button class="btn-share">↗ Share report</button>
-      <button class="btn-outline-purple" onclick="goto('screen-flag')">⚑ Flag issue</button>
+      <button class="btn-outline-purple" onclick="openFlagForm()">⚑ Flag issue</button>
     </div>
   </main>
 </div>
@@ -531,7 +570,7 @@
     <div class="action-bar">
       <button class="btn-recheck" onclick="goto('screen-loading')">↺ Re-check</button>
       <button class="btn-share">↗ Share report</button>
-      <button class="btn-outline-purple" onclick="goto('screen-flag')">⚑ Flag issue</button>
+      <button class="btn-outline-purple" onclick="openFlagForm()">⚑ Flag issue</button>
     </div>
   </main>
 </div>
@@ -601,7 +640,7 @@
   <main class="body-section">
     <h2 class="page-title">Misinformation trends</h2>
     <p class="page-sub">Topics most commonly targeted by fake news and misinformation</p>
-    <div class="trends-grid">
+    <div class="trends-grid" id="trends-grid">
       <div class="trend-card"><div class="trend-topic">Politics</div><div class="trend-count">4,821</div><div class="trend-lbl">flagged articles</div><div class="trend-bar-row"><div class="trend-bar-track"><div class="trend-bar-fill" style="width:92%;background:#F87171;"></div></div><span class="trend-pct">92%</span></div></div>
       <div class="trend-card"><div class="trend-topic">Health</div><div class="trend-count">3,102</div><div class="trend-lbl">flagged articles</div><div class="trend-bar-row"><div class="trend-bar-track"><div class="trend-bar-fill" style="width:74%;background:#FACC15;"></div></div><span class="trend-pct">74%</span></div></div>
       <div class="trend-card"><div class="trend-topic">Economy</div><div class="trend-count">1,894</div><div class="trend-lbl">flagged articles</div><div class="trend-bar-row"><div class="trend-bar-track"><div class="trend-bar-fill" style="width:56%;background:#A78BFA;"></div></div><span class="trend-pct">56%</span></div></div>
@@ -662,8 +701,169 @@
   </main>
 </div>
 
+<!-- ========== SCREEN: FLAG FORM (fills in before the success screen) ========== -->
+<div class="screen" id="screen-flag-form">
+  <nav class="navbar">
+    <div class="logo">Credify</div>
+    <div class="nav-right">
+      <button class="btn-ghost" onclick="goto('screen-result-high')">← Back</button>
+      <div class="avatar" onclick="openProfile()">👤</div>
+    </div>
+  </nav>
+  <main class="form-section">
+    <div class="form-card">
+      <h2 class="form-title">Flag this result</h2>
+      <p class="form-sub">Think the analysis got it wrong? Tell us why — an admin will review it.</p>
+      <div class="flag-context" id="flag-context"></div>
+      <label class="input-label" for="flag-reason">What's wrong with this result?</label>
+      <textarea class="text-input flag-textarea" id="flag-reason" rows="4"
+        placeholder="e.g. This is a reputable source but the score says fake news…"></textarea>
+      <p class="form-error" id="flag-error"></p>
+      <button class="btn-submit" onclick="submitFlag()">Submit flag</button>
+    </div>
+  </main>
+</div>
+
+<!-- ========== SCREEN: ADMIN DASHBOARD ========== -->
+<div class="screen" id="screen-admin">
+  <nav class="navbar">
+    <div class="logo">Credify <span class="admin-chip">ADMIN</span></div>
+    <div class="nav-right">
+      <button class="btn-ghost" onclick="goto('screen-home-auth')">← Exit admin</button>
+      <div class="avatar" onclick="openProfile()">👤</div>
+    </div>
+  </nav>
+  <main class="body-section admin-section">
+    <h2 class="page-title">Admin dashboard</h2>
+    <p class="page-sub">Everything below is computed live from the database — nothing is hardcoded.</p>
+
+    <div class="admin-tabs">
+      <button class="admin-tab active" id="atab-overview" onclick="switchAdminTab('overview')">Overview</button>
+      <button class="admin-tab" id="atab-flags" onclick="switchAdminTab('flags')">Flags <span class="atab-badge" id="flags-badge"></span></button>
+      <button class="admin-tab" id="atab-trends" onclick="switchAdminTab('trends')">Trends</button>
+      <button class="admin-tab" id="atab-claims" onclick="switchAdminTab('claims')">Known-false claims</button>
+    </div>
+
+    <!-- TAB: OVERVIEW -->
+    <div class="admin-panel" id="apanel-overview">
+      <div class="stat-grid" id="stat-grid"><div class="admin-loading">Loading…</div></div>
+      <div class="admin-two-col">
+        <div class="info-box">
+          <div class="box-title">Verdict distribution</div>
+          <div id="verdict-bars" class="verdict-bars"></div>
+        </div>
+        <div class="info-box">
+          <div class="box-title">Scans — last 14 days</div>
+          <div id="activity-chart" class="activity-chart"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- TAB: FLAGS -->
+    <div class="admin-panel" id="apanel-flags" style="display:none">
+      <div class="flag-filters">
+        <button class="filter-pill-a active" data-f="all" onclick="setFlagFilter('all')">All</button>
+        <button class="filter-pill-a" data-f="pending" onclick="setFlagFilter('pending')">Pending</button>
+        <button class="filter-pill-a" data-f="reviewed" onclick="setFlagFilter('reviewed')">Reviewed</button>
+        <button class="filter-pill-a" data-f="dismissed" onclick="setFlagFilter('dismissed')">Dismissed</button>
+      </div>
+      <div id="flag-list" class="flag-list"><div class="admin-loading">Loading…</div></div>
+    </div>
+
+    <!-- TAB: TRENDS -->
+    <div class="admin-panel" id="apanel-trends" style="display:none">
+      <p class="admin-hint">These rows drive the public Trends page. Edit a value and hit Save.</p>
+      <div id="trend-rows" class="trend-rows"><div class="admin-loading">Loading…</div></div>
+      <div class="trend-add-row">
+        <input class="text-input a-input" id="new-trend-topic" placeholder="Topic (e.g. Elections)"/>
+        <input class="text-input a-input a-input-num" id="new-trend-count" type="number" placeholder="Count"/>
+        <input class="text-input a-input a-input-num" id="new-trend-pct" type="number" min="0" max="100" placeholder="%"/>
+        <button class="btn-submit a-btn" onclick="addTrend()">Add topic</button>
+      </div>
+    </div>
+
+    <!-- TAB: CLAIMS -->
+    <div class="admin-panel" id="apanel-claims" style="display:none">
+      <p class="admin-hint">The scan engine merges these with its built-in debunked-claims list (refreshes within ~60s, no redeploy needed). Patterns are matched case-insensitively; regex is supported.</p>
+      <div id="claim-rows" class="trend-rows"><div class="admin-loading">Loading…</div></div>
+      <div class="trend-add-row">
+        <input class="text-input a-input" id="new-claim-pattern" placeholder="Pattern (e.g. 5g.*causes.*virus)"/>
+        <input class="text-input a-input" id="new-claim-reason" placeholder="Reason shown to users"/>
+        <button class="btn-submit a-btn" onclick="addClaim()">Add claim</button>
+      </div>
+    </div>
+  </main>
+</div>
+
+<!-- ========== MODAL: TERMS OF SERVICE / PRIVACY POLICY ========== -->
+<div class="modal-overlay" id="tos-modal" onclick="if(event.target===this) closeTosModal()">
+  <div class="legal-card">
+    <div class="modal-head">
+      <div class="modal-tabs">
+        <button class="modal-tab active" id="tab-tos" onclick="switchTosTab('tos')">Terms of Service</button>
+        <button class="modal-tab" id="tab-privacy" onclick="switchTosTab('privacy')">Privacy Policy</button>
+      </div>
+      <button class="modal-close" onclick="closeTosModal()">✕</button>
+    </div>
+
+    <div class="modal-body" id="tos-content">
+      <p class="modal-updated">Last updated: July 13, 2026</p>
+
+      <h4>1. Acceptance of Terms</h4>
+      <p>By creating an account or using Credify ("the Service"), you agree to be bound by these Terms of Service. If you do not agree, do not use the Service.</p>
+
+      <h4>2. Description of Service</h4>
+      <p>Credify is a credibility-analysis tool that evaluates URLs, text claims, and images using automated and AI-assisted methods. Results are <strong>informational estimates, not statements of fact</strong>. Credify does not guarantee the accuracy of any credibility score, verdict, or analysis, and its output should not be treated as a substitute for your own judgment or professional fact-checking.</p>
+
+      <h4>3. Accounts</h4>
+      <p>You must provide a valid email address to register. You are responsible for maintaining the confidentiality of your password and for all activity under your account. You must be at least 13 years old (or the minimum age required in your jurisdiction) to create an account.</p>
+
+      <h4>4. Acceptable Use</h4>
+      <p>You agree not to: (a) use automated means (bots, scrapers, scripts) to access the Service or create accounts; (b) attempt to bypass rate limits, CAPTCHA, or other security measures; (c) submit content that is unlawful or that you do not have the right to submit; (d) use the Service to harass others or spread misinformation; (e) interfere with or disrupt the Service.</p>
+
+      <h4>5. Content You Submit</h4>
+      <p>You retain ownership of content you submit for analysis. By submitting content, you grant Credify a limited license to process it for the purpose of providing the analysis, including transmitting it to third-party AI providers used by the Service.</p>
+
+      <h4>6. Termination</h4>
+      <p>We may suspend or terminate accounts that violate these terms. You may delete your account at any time from your account settings.</p>
+
+      <h4>7. Disclaimer &amp; Limitation of Liability</h4>
+      <p>The Service is provided "as is" without warranties of any kind. To the maximum extent permitted by law, Credify and its creators are not liable for any damages arising from your use of, or reliance on, the Service or its results.</p>
+
+      <h4>8. Changes to These Terms</h4>
+      <p>We may update these terms from time to time. Continued use of the Service after changes take effect constitutes acceptance of the revised terms.</p>
+    </div>
+
+    <div class="modal-body" id="privacy-content" style="display:none">
+      <p class="modal-updated">Last updated: July 13, 2026</p>
+
+      <h4>1. Information We Collect</h4>
+      <p>When you register we collect your name, email address, and a hashed password (handled by our authentication provider, Supabase). When you use the Service we store your scan history (the content you submit and the results) if you are signed in.</p>
+
+      <h4>2. How We Use Your Information</h4>
+      <p>We use your information to: provide and secure the Service (including email verification codes and CAPTCHA verification), maintain your scan history, and respond to account requests. We do not sell your personal information.</p>
+
+      <h4>3. Third-Party Processors</h4>
+      <p>The Service relies on: <strong>Supabase</strong> (authentication and database), <strong>Cloudflare Turnstile</strong> (bot protection), and AI inference providers (content analysis). Content you submit for scanning is transmitted to these providers as needed to deliver results.</p>
+
+      <h4>4. Data Retention &amp; Deletion</h4>
+      <p>Your account data and scan history are retained while your account is active. Deleting your account removes your personal data from our systems, subject to short backup-retention windows.</p>
+
+      <h4>5. Security</h4>
+      <p>Passwords are hashed and never stored in plain text. Access to production data is restricted. No system is perfectly secure, and you use the Service at your own risk.</p>
+
+      <h4>6. Contact</h4>
+      <p>For privacy questions or data requests, contact the Credify team through the project repository or the contact details published on the Service.</p>
+    </div>
+
+    <button class="btn-submit modal-agree" onclick="agreeTosFromModal()">I agree</button>
+  </div>
+</div>
+
+<script src="https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit" async defer></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script src="config.js"></script>
 <script src="app.js"></script>
+<script src="admin.js"></script>
 </body>
 </html>
