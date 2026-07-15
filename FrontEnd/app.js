@@ -690,6 +690,12 @@ async function handleRegister() {
 
   clearError('register-error');
 
+  const captchaToken = turnstile.getResponse();
+  if (!captchaToken) {
+    showError('register-error', 'Please complete the captcha.'); 
+    return;
+  }
+
   if (!account_name || !email || !password) {
     showError('register-error', 'Please fill in all fields.'); return;
   }
@@ -705,12 +711,16 @@ async function handleRegister() {
   btn.textContent = 'Sending code…';
   btn.disabled = true;
 
+
   try {
     // Creates the user (unconfirmed) and emails a 6-digit code.
     const { data, error } = await sbClient.auth.signUp({
       email,
       password,
-      options: { data: { account_name } }
+      options: { 
+        data: { account_name },
+        captchaToken 
+      }
     });
 
     if (error) {
@@ -751,6 +761,7 @@ async function handleRegister() {
   } catch (err) {
     showError('register-error', 'Could not connect to Supabase. Is it running?');
   } finally {
+    turnstile.reset();
     btn.innerHTML = orig;
     btn.disabled = false;
   }
@@ -920,6 +931,12 @@ async function handleLogin() {
 
   clearError('login-error');
 
+  const captchaToken = turnstile.getResponse();
+  if (!captchaToken) {
+    showError('login-error', 'Please complete the captcha first.');
+    return;
+  }
+
   if (!email || !password) {
     showError('login-error', 'Please enter your email and password.'); return;
   }
@@ -929,7 +946,11 @@ async function handleLogin() {
   btn.disabled = true;
 
   try {
-    const { data, error } = await sbClient.auth.signInWithPassword({ email, password });
+    const { data, error } = await sbClient.auth.signInWithPassword({ 
+      email, 
+      password,
+      options: {captchaToken} 
+    });
 
     if (error) {
       showError('login-error', error.message); return;
@@ -943,6 +964,7 @@ async function handleLogin() {
   } catch (err) {
     showError('login-error', 'Could not connect to Supabase. Is it running?');
   } finally {
+    turnstile.reset();
     btn.textContent = 'Sign in';
     btn.disabled = false;
   }
