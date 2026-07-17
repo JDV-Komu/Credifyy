@@ -9,9 +9,9 @@ from routers import scan, account
 
 app = FastAPI()
 ALLOWED_ORIGINS = [
-    "https://credify-project.netlify.app/",  # production frontend
-    "http://localhost:5500/",          # local dev (Live Server)
-    "http://127.0.0.1:5500/",          # local dev (Live Server)
+    "https://credify-project.netlify.app",  # production frontend
+    "http://localhost:5500",          # local dev (Live Server)
+    "http://127.0.0.1:5500",          # local dev (Live Server)
 ]
 app.add_middleware(
     CORSMiddleware,
