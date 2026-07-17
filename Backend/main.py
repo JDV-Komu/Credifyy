@@ -8,10 +8,14 @@ load_dotenv()  # must run BEFORE importing routers that read env vars
 from routers import scan, account
 
 app = FastAPI()
-
+ALLOWED_ORIGINS = [
+    "https://credify-project.netlify.app/",  # production frontend
+    "http://localhost:5500/",          # local dev (Live Server)
+    "http://127.0.0.1:5500/",          # local dev (Live Server)
+]
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # tighten this in production
+    allow_origins=ALLOWED_ORIGINS,
     allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
