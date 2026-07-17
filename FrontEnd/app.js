@@ -2,6 +2,12 @@
 //  CREDIFY — APP.JS
 // ===========================
 
+// ── Config ─────────────────────────────────────────────────────
+//the url and anon key comes from a config.js file that can't be uploaded because we can't
+// share the anon key (really unsafe)
+const sbClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+const captchaWidgets = {}; // container id -> turnstile widget id
 // ── Screen navigation ──────────────────────────────────────────
 function goto(screenId) {
   document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
@@ -664,9 +670,35 @@ function togglePass(inputId, btn) {
     : `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M17.94 17.94A10.07 10.07 0 0112 20c-7 0-11-8-11-8a18.45 18.45 0 015.06-5.94M9.9 4.24A9.12 9.12 0 0112 4c7 0 11 8 11 8a18.5 18.5 0 01-2.16 3.19m-6.72-1.07a3 3 0 11-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></svg>`;
 }
 
-function checkStrength(value) {
-  const fill = document.getElementById('strength-fill');
-  const label = document.getElementById('strength-label');
+// function checkStrength(value) {
+//   const fill = document.getElementById('strength-fill');
+//   const label = document.getElementById('strength-label');
+//   if (!fill || !label) return;
+
+//   let score = 0;
+//   if (value.length >= 8) score++;
+//   if (/[A-Z]/.test(value)) score++;
+//   if (/[0-9]/.test(value)) score++;
+//   if (/[^A-Za-z0-9]/.test(value)) score++;
+
+//   const levels = [
+//     { pct: '0%',   color: 'transparent', text: '' },
+//     { pct: '25%',  color: '#F87171',     text: 'Weak' },
+//     { pct: '50%',  color: '#FACC15',     text: 'Fair' },
+//     { pct: '75%',  color: '#A78BFA',     text: 'Good' },
+//     { pct: '100%', color: '#4ADE80',     text: 'Strong' },
+//   ];
+
+//   const lvl = levels[score];
+//   fill.style.width = lvl.pct;
+//   fill.style.background = lvl.color;
+//   label.textContent = lvl.text;
+//   label.style.color = lvl.color;
+// }
+
+function checkStrengthFor(value, fillId, labelId) {
+  const fill = document.getElementById(fillId);
+  const label = document.getElementById(labelId);
   if (!fill || !label) return;
 
   let score = 0;
@@ -715,6 +747,59 @@ function updateAvatar(email) {
   document.querySelectorAll('.profile-email').forEach(el => el.innerHTML = email);
 }
 
+// ── History screen filter ──────────────────────────────────────
+let historyFilter = 'all';
+
+function setHistoryFilter(el) {
+  document.querySelectorAll('#screen-history .filter-pill').forEach(p => p.classList.remove('active'));
+  el.classList.add('active');
+  historyFilter = el.dataset.verdict;
+  renderHistoryList();
+}
+
+function renderHistoryList() {
+  const list = document.getElementById('history-list');
+  if (!list) return;
+
+  if (!Auth.isLoggedIn()) {
+    list.innerHTML = '<div class="rs-empty">Sign in to see your verification history.</div>';
+    return;
+  }
+
+  const filtered = historyFilter === 'all'
+    ? reportsCache
+    : reportsCache.filter(r => r.verdict === historyFilter);
+
+  if (!filtered.length) {
+    const msg = historyFilter === 'all'
+      ? 'No saved reports yet. Run a check and it will appear here.'
+      : 'No reports matching this filter.';
+    list.innerHTML = `<div class="rs-empty">${msg}</div>`;
+    return;
+  }
+
+  let html = '', lastDay = '';
+  filtered.forEach(r => {
+    const day = reportDayLabel(r.created_at);
+    if (day !== lastDay) {
+      html += `<div class="hist-day">${escapeHtml(day)}</div>`;
+      lastDay = day;
+    }
+    const cls = r.score >= 70 ? 'green' : r.score >= 45 ? 'yellow' : 'red';
+    const time = new Date(r.created_at).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+    html +=
+      `<div class="hist-item" onclick="openSavedReport('${r.id}')">` +
+        `<div class="hist-badge ${cls}">${r.score}</div>` +
+        `<div class="hist-info">` +
+          `<div class="hist-url">${escapeHtml(r.input_preview || 'Untitled')}</div>` +
+          `<div class="hist-date">${escapeHtml(time)} · ${escapeHtml(r.input_type || 'Scan')} · ${escapeHtml(r.verdict || '')}</div>` +
+        `</div>` +
+        `<span class="hist-arrow">›</span>` +
+      `</div>`;
+  });
+  list.innerHTML = html;
+}
+
 // authentication
 
 async function getToken() {
@@ -723,13 +808,6 @@ async function getToken() {
 }
 // ── Auth state — kept in memory ────────────────────────────────
 // Stores the logged-in user's token and info after login
-// ── Config ─────────────────────────────────────────────────────
-
-// ── Config ─────────────────────────────────────────────────────
-//the url and anon key comes from a config.js file that can't be uploaded because we can't
-// share the anon key (really unsafe)
-const sbClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
-
 // ── Auth state ─────────────────────────────────────────────────
 const Auth = {
   token: null,
@@ -750,7 +828,7 @@ const TURNSTILE_KEY = (typeof TURNSTILE_SITE_KEY !== 'undefined')
   ? TURNSTILE_SITE_KEY
   : '1x00000000000000000000AA'; // test key: always passes
 
-const captchaWidgets = {}; // container id -> turnstile widget id
+
 
 function renderCaptchas() {
   // Turnstile loads async; retry until it's available.
@@ -885,10 +963,15 @@ function applySession(session) {
 async function checkAdminRole() {
   Auth.isAdmin = false;
   try {
-    const { data } = await sbClient.from('user_roles')
+    const session = await sbClient.auth.getSession();
+    console.log("session for admin check:", session);
+    
+    const { data, error } = await sbClient.from('user_roles')
       .select('role').eq('user_id', Auth.user.id).maybeSingle();
+    console.log("admin data:", data);
+    console.log("admin error:", error);
     Auth.isAdmin = !!(data && data.role === 'admin');
-  } catch (e) { /* table may not exist yet — treat as non-admin */ }
+  } catch (e) { }
   document.querySelectorAll('.nav-admin-btn')
     .forEach(b => { b.style.display = Auth.isAdmin ? '' : 'none'; });
 }
@@ -966,6 +1049,7 @@ async function loadReports() {
     reportsCache = [];
   }
   renderReportSidebar();
+  renderHistoryList();
 }
 
 // "Today" / "Yesterday" / "Jul 10" style labels for grouping by day.
@@ -1135,6 +1219,7 @@ function openHistory() {
 
 function openProfile() {
   if (Auth.isLoggedIn()) {
+    loadProfileStats();
     goto('screen-profile');
   } else {
     goto('screen-login');
@@ -1166,11 +1251,11 @@ async function handleRegister() {
 
   clearError('register-error');
 
-  const captchaToken = turnstile.getResponse();
-  if (!captchaToken) {
-    showError('register-error', 'Please complete the captcha.'); 
-    return;
-  }
+  // const captchaToken = turnstile.getResponse();
+  // if (!captchaToken) {
+  //   showError('register-error', 'Please complete the captcha.'); 
+  //   return;
+  // }
 
   if (!account_name || !email || !password) {
     showError('register-error', 'Please fill in all fields.'); return;
@@ -1209,14 +1294,10 @@ async function handleRegister() {
     const { data, error } = await sbClient.auth.signUp({
       email,
       password,
-<<<<<<< HEAD
       options: { 
         data: { account_name },
         captchaToken 
       }
-=======
-      options: { data: { account_name }, captchaToken }
->>>>>>> d6b88760e4fa56a384e53153d4a87884dee546f1
     });
 
     if (error) {
@@ -1257,7 +1338,6 @@ async function handleRegister() {
   } catch (err) {
     showError('register-error', 'Could not connect to Supabase. Is it running?');
   } finally {
-    turnstile.reset();
     btn.innerHTML = orig;
     btn.disabled = false;
     resetCaptcha('captcha-register'); // token is single-use
@@ -1444,11 +1524,11 @@ async function handleLogin() {
 
   clearError('login-error');
 
-  const captchaToken = turnstile.getResponse();
-  if (!captchaToken) {
-    showError('login-error', 'Please complete the captcha first.');
-    return;
-  }
+  // const captchaToken = turnstile.getResponse();
+  // if (!captchaToken) {
+  //   showError('login-error', 'Please complete the captcha first.');
+  //   return;
+  // }
 
   if (!email || !password) {
     showError('login-error', 'Please enter your email and password.'); return;
@@ -1464,17 +1544,10 @@ async function handleLogin() {
   btn.disabled = true;
 
   try {
-<<<<<<< HEAD
     const { data, error } = await sbClient.auth.signInWithPassword({ 
       email, 
       password,
       options: {captchaToken} 
-=======
-    const { data, error } = await sbClient.auth.signInWithPassword({
-      email,
-      password,
-      options: { captchaToken }
->>>>>>> d6b88760e4fa56a384e53153d4a87884dee546f1
     });
 
     if (error) {
@@ -1489,7 +1562,6 @@ async function handleLogin() {
   } catch (err) {
     showError('login-error', 'Could not connect to Supabase. Is it running?');
   } finally {
-    turnstile.reset();
     btn.textContent = 'Sign in';
     btn.disabled = false;
     resetCaptcha('captcha-login'); // token is single-use
@@ -1510,61 +1582,197 @@ async function handleLogout() {
   }
 }
 
-// ── Change Email ───────────────────────────────────────────────
-async function changeEmail(newEmail) {
-  console.log("attempting to change email")
-  const token = await getToken()
-  const res = await fetch("http://127.0.0.1:8000/account/email", {
-    method: 'PUT',
-    headers: {
-      "Content-Type": "application/json",
-      "Authorization": `Bearer ${token}`
-    },
-    body: JSON.stringify({ email: newEmail })
-  });
-
-  const data = await res.json();
-  console.log(data);
-  if (!res.ok) showError('settings-error', data.detail || 'Failed to update email.');
-  else 
-    showError('settings-error', '✓ Email updated!')
-    updateAvatar(newEmail)
-  ;
+async function loadProfileStats() {
+  if (!Auth.isLoggedIn()) return;
+  const verified = reportsCache.filter(r => r.verdict === 'credible').length;
+  const now = new Date();
+  const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+  const thisMonth = reportsCache.filter(r => new Date(r.created_at) >= monthStart).length;
+  const el = id => document.getElementById(id);
+  if (el('stat-verified')) el('stat-verified').textContent = verified;
+  if (el('stat-month')) el('stat-month').textContent = thisMonth;
+  try {
+    const { count } = await sbClient.from('flags')
+      .select('*', { count: 'exact', head: true })
+      .eq('user_id', Auth.user.id);
+    if (el('stat-flagged')) el('stat-flagged').textContent = count || 0;
+  } catch (e) {
+    if (el('stat-flagged')) el('stat-flagged').textContent = '—';
+  }
 }
 
-// ── Change Password ────────────────────────────────────────────
-async function changePassword(newPassword) {
-  const token = await getToken()
-  console.log("attempting to change password");
-  const res = await fetch("http://127.0.0.1:8000/account/password", {
-    method: 'PUT',
-    headers: {
-      "Content-Type": "application/json",
-      "Authorization": `Bearer ${token}`
-    },
-    body: JSON.stringify({ password: newPassword })
+// ── Change Email flow ──────────────────────────────────────────
+async function handleChangeEmail() {
+  const currentPass = document.getElementById('change-email-pass').value;
+  const newEmail = document.getElementById('new-email-input').value.trim();
+  clearError('change-email-error');
+  if (!currentPass || !newEmail) { showError('change-email-error', 'Please fill in all fields.'); return; }
+
+  const { error: authErr } = await sbClient.auth.signInWithPassword({
+    email: Auth.user.email, password: currentPass
   });
-  const data = await res.json();
-  if (!res.ok) showError('settings-error', data.detail || 'Failed to update password.');
-  else showError('settings-error', '✓ Password updated!');
+  if (authErr) { showError('change-email-error', 'Incorrect password.'); return; }
+
+  const btn = document.querySelector('#screen-change-email .btn-submit');
+  btn.textContent = 'Updating…'; btn.disabled = true;
+  try {
+    const token = await getToken();
+    const res = await fetch(`${BACKEND_URL}/account/email`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+      body: JSON.stringify({ email: newEmail })
+    });
+    const data = await res.json();
+    if (!res.ok) { showError('change-email-error', data.detail || 'Failed to update email.'); return; }
+    Auth.user.email = newEmail;
+    updateAvatar(newEmail);
+    document.getElementById('change-email-pass').value = '';
+    document.getElementById('new-email-input').value = '';
+    goto('screen-profile');
+  } catch (e) {
+    showError('change-email-error', 'Could not connect to server.');
+  } finally {
+    btn.textContent = 'Update email'; btn.disabled = false;
+  }
 }
 
-// ── Delete Account ─────────────────────────────────────────────
-async function deleteAccount() {
-  console.log("trying to delete account");
-  const token = await getToken()
-  const res = await fetch("http://127.0.0.1:8000/account", {
+// ── Change Password flow ───────────────────────────────────────
+async function handleChangePassword() {
+  const currentPass = document.getElementById('change-pass-current').value;
+  const newPass = document.getElementById('change-pass-new').value;
+  const confirmPass = document.getElementById('change-pass-confirm').value;
+  clearError('change-pass-error');
+  if (!currentPass || !newPass || !confirmPass) { showError('change-pass-error', 'Please fill in all fields.'); return; }
+  if (newPass !== confirmPass) { showError('change-pass-error', 'New passwords do not match.'); return; }
+  if (newPass.length < 6) { showError('change-pass-error', 'Password must be at least 6 characters.'); return; }
+
+  const { error: authErr } = await sbClient.auth.signInWithPassword({
+    email: Auth.user.email, password: currentPass
+  });
+  if (authErr) { showError('change-pass-error', 'Incorrect current password.'); return; }
+
+  const btn = document.querySelector('#screen-change-password .btn-submit');
+  btn.textContent = 'Updating…'; btn.disabled = true;
+  try {
+    const token = await getToken();
+    const res = await fetch(`${BACKEND_URL}/account/password`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+      body: JSON.stringify({ password: newPass })
+    });
+    const data = await res.json();
+    if (!res.ok) { showError('change-pass-error', data.detail || 'Failed to update password.'); return; }
+    document.getElementById('change-pass-current').value = '';
+    document.getElementById('change-pass-new').value = '';
+    document.getElementById('change-pass-confirm').value = '';
+    goto('screen-profile');
+  } catch (e) {
+    showError('change-pass-error', 'Could not connect to server.');
+  } finally {
+    btn.textContent = 'Update password'; btn.disabled = false;
+  }
+}
+
+// ── Clear history flow ─────────────────────────────────────────
+function confirmClearHistory() {
+  document.getElementById('clear-history-modal').classList.add('open');
+}
+function closeClearHistoryModal() {
+  document.getElementById('clear-history-modal').classList.remove('open');
+}
+async function executeClearHistory() {
+  closeClearHistoryModal();
+  if (!Auth.isLoggedIn()) return;
+  try {
+    await sbClient.from('reports').delete().eq('user_id', Auth.user.id);
+    reportsCache = [];
+    renderHistoryList();
+  } catch (e) { console.warn('clear history failed:', e); }
+}
+
+// ── Delete account flow ────────────────────────────────────────
+async function handleDeleteAccountConfirm() {
+  const pass = document.getElementById('delete-confirm-pass').value;
+  clearError('delete-account-error');
+  if (!pass) { showError('delete-account-error', 'Please enter your password.'); return; }
+  const { error: authErr } = await sbClient.auth.signInWithPassword({
+    email: Auth.user.email, password: pass
+  });
+  if (authErr) { showError('delete-account-error', 'Incorrect password.'); return; }
+  document.getElementById('delete-account-modal').classList.add('open');
+}
+function closeDeleteAccountModal() {
+  document.getElementById('delete-account-modal').classList.remove('open');
+}
+async function executeDeleteAccount() {
+  closeDeleteAccountModal();
+  const token = await getToken();
+  const res = await fetch(`${BACKEND_URL}/account`, {
     method: 'DELETE',
-    headers: {
-      "Authorization": `Bearer ${token}`
-    }
+    headers: { 'Authorization': `Bearer ${token}` }
   });
   if (!res.ok) { showError('settings-error', 'Failed to delete account.'); return; }
   await sbClient.auth.signOut();
   Auth.token = null;
-  Auth.user  = null;
+  Auth.user = null;
   goto('screen-login');
 }
+
+// // ── Change Email ───────────────────────────────────────────────
+// async function changeEmail(newEmail) {
+//   console.log("attempting to change email")
+//   const token = await getToken()
+//   const res = await fetch("http://127.0.0.1:8000/account/email", {
+//     method: 'PUT',
+//     headers: {
+//       "Content-Type": "application/json",
+//       "Authorization": `Bearer ${token}`
+//     },
+//     body: JSON.stringify({ email: newEmail })
+//   });
+
+//   const data = await res.json();
+//   console.log(data);
+//   if (!res.ok) showError('settings-error', data.detail || 'Failed to update email.');
+//   else 
+//     showError('settings-error', '✓ Email updated!')
+//     updateAvatar(newEmail)
+//   ;
+// }
+
+// // ── Change Password ────────────────────────────────────────────
+// async function changePassword(newPassword) {
+//   const token = await getToken()
+//   console.log("attempting to change password");
+//   const res = await fetch("http://127.0.0.1:8000/account/password", {
+//     method: 'PUT',
+//     headers: {
+//       "Content-Type": "application/json",
+//       "Authorization": `Bearer ${token}`
+//     },
+//     body: JSON.stringify({ password: newPassword })
+//   });
+//   const data = await res.json();
+//   if (!res.ok) showError('settings-error', data.detail || 'Failed to update password.');
+//   else showError('settings-error', '✓ Password updated!');
+// }
+
+// // ── Delete Account ─────────────────────────────────────────────
+// async function deleteAccount() {
+//   console.log("trying to delete account");
+//   const token = await getToken()
+//   const res = await fetch("http://127.0.0.1:8000/account", {
+//     method: 'DELETE',
+//     headers: {
+//       "Authorization": `Bearer ${token}`
+//     }
+//   });
+//   if (!res.ok) { showError('settings-error', 'Failed to delete account.'); return; }
+//   await sbClient.auth.signOut();
+//   Auth.token = null;
+//   Auth.user  = null;
+//   goto('screen-login');
+// }
 
 
 
