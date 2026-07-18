@@ -547,7 +547,7 @@ def heuristic_image(caption, filename):
 # ---------------------------------------------------------------------------
 
 GROQ_BASE_URL = "https://api.groq.com/openai/v1"
-GROQ_DEFAULT_MODEL = "meta-llama/llama-4-scout-17b-16e-instruct"  # handles text + vision
+GROQ_DEFAULT_MODEL = "qwen/qwen3.6-27b"  # handles text + vision
 
 SYSTEM_PROMPT = """You are the analysis engine for Credify, a misinformation-detection app.
 You assess the CREDIBILITY of ONE submitted item: an IMAGE or an ARTICLE (news URL/text).
@@ -650,7 +650,8 @@ def groq_scan(body, page_context=""):
         resp = client.chat.completions.create(
             model=model,
             temperature=0.5,   # slight variance so scores don't cluster
-            max_tokens=1400,   # room for the detailed summary + findings
+            max_tokens=4000,   # thinking models need room for reasoning + JSON
+            response_format={"type": "json_object"},
             messages=[
                 {"role": "system", "content": SYSTEM_PROMPT},
                 {"role": "user", "content": user_content},
@@ -658,7 +659,16 @@ def groq_scan(body, page_context=""):
         )
         raw = (resp.choices[0].message.content or "").strip()
         text = re.sub(r"^```(json)?|```$", "", raw).strip()
-        data = json.loads(text)
+        text = re.sub(r"<think>.*?</think>", "", text, flags=re.DOTALL).strip()
+        try:
+            data = json.loads(text)
+        except json.JSONDecodeError:
+            # Model wrapped the JSON in prose — grab the outermost {...} block.
+            m = re.search(r"\{.*\}", text, re.DOTALL)
+            if not m:
+                print("[scan] Groq returned non-JSON. First 300 chars: " + text[:300])
+                return None
+            data = json.loads(m.group(0))
 
         seed = (body.input or "") + (body.filename or "")
         score = spread(clamp(data.get("score", 50)), seed)
