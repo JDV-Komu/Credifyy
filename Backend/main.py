@@ -21,5 +21,9 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+@app.get("/health")
+def health():
+    return {"status": "ok"}
+
 app.include_router(scan.router)     # /scan credibility endpoint
 app.include_router(account.router)  # /account endpoints

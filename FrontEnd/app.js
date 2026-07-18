@@ -100,6 +100,8 @@ function handleComposerKey(event) {
 
 const BACKEND_URL = "https://credifyy.onrender.com";
 
+fetch(`${BACKEND_URL}/`, { method: 'GET' }).catch(() => {});
+
 // Grab whatever the user typed in the composer of the active screen.
 function getComposerInput() {
   const active = document.querySelector('.screen.active');
@@ -170,10 +172,10 @@ async function runScan() {
   const startedAt = Date.now();
   let report;
   try {
-    // Abort if the backend doesn't answer within 25s, so the loading screen
+    // Abort if the backend doesn't answer within 75s, so the loading screen
     // can never get stuck — we fall back to the local heuristic instead.
     const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), 25000);
+    const timer = setTimeout(() => controller.abort(), 75000);
     const res = await fetch(`${BACKEND_URL}/scan`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
