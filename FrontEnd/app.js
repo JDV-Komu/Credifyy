@@ -276,6 +276,7 @@ async function runScan() {
 
 // Paint a report object into the result screen.
 function renderResult(r) {
+  lastReport = r;   // kept for the PDF export
   const level = r.verdict === 'credible' ? 'high'
               : r.verdict === 'uncertain' ? 'mid' : 'low';
 
@@ -394,6 +395,317 @@ function renderResult(r) {
 function escapeHtml(s) {
   return String(s).replace(/[&<>"']/g, c =>
     ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+}
+
+// ──────────────────────────────────────────────────────────────
+//  PDF REPORT EXPORT
+// ──────────────────────────────────────────────────────────────
+// Draws a light, print-friendly A4 document with jsPDF's vector API rather
+// than screenshotting the dark UI, so the text stays selectable and the file
+// stays small. Layout units are millimetres.
+
+let lastReport = null;
+
+const PDF = {
+  W: 210, H: 297, M: 18, CW: 174,
+  INK:   [23, 23, 26],
+  MUTED: [107, 107, 117],
+  HAIR:  [227, 227, 232],
+  SOFT:  [247, 247, 249],
+  // Print-safe version of the on-screen red-to-green ramp.
+  RAMP: [[220, 38, 38], [234, 88, 12], [202, 138, 4], [101, 163, 13], [22, 163, 74]]
+};
+
+// jsPDF's built-in fonts only cover Latin-1, so glyphs the app uses in tags and
+// input previews (check marks, warning signs, the image emoji) would render as
+// blanks. Transliterate what has an equivalent and drop the rest.
+function pdfSafe(s) {
+  return String(s == null ? '' : s)
+    .replace(/[\u00A0\u202F\u2009\u200A]/g, ' ')
+    .replace(/[\u2713\u2714]/g, '')
+    .replace(/[\u2715\u2717\u2718]/g, 'x')
+    .replace(/\u26A0\uFE0F?/g, '!')
+    .replace(/[\u2690\u2691]/g, '')
+    .replace(/[\u2190-\u21FF]/g, '')
+    .replace(/\u2026/g, '...')
+    .replace(/[\u2018\u2019\u201A]/g, "'")
+    .replace(/[\u201C\u201D\u201E]/g, '"')
+    .replace(/[\u2010-\u2015]/g, '-')
+    .replace(/[^\x20-\xFF\n]/g, '')
+    .replace(/[ \t]{2,}/g, ' ')
+    .trim();
+}
+
+function pdfVerdictColor(verdict, score) {
+  if (verdict === 'credible') return [22, 163, 74];
+  if (verdict === 'uncertain') return [202, 138, 4];
+  if (verdict) return [220, 38, 38];
+  return score >= 70 ? [22, 163, 74] : score >= 45 ? [202, 138, 4] : [220, 38, 38];
+}
+
+// Blend a colour toward white. 0 = untouched, 1 = white.
+function pdfTint(c, amount) {
+  return c.map(v => Math.round(v + (255 - v) * amount));
+}
+
+async function downloadReport(btn) {
+  const lib = window.jspdf && window.jspdf.jsPDF;
+  if (!lib) {
+    if (btn) flashButton(btn, 'Export unavailable', '↓ Download report');
+    console.warn('[report] jsPDF failed to load');
+    return;
+  }
+  const r = lastReport;
+  if (!r) {
+    if (btn) flashButton(btn, 'No report yet', '↓ Download report');
+    return;
+  }
+
+  const original = btn ? btn.textContent : null;
+  if (btn) { btn.disabled = true; btn.textContent = 'Preparing…'; }
+
+  try {
+    const doc = new lib({ unit: 'mm', format: 'a4' });
+    const M = PDF.M, CW = PDF.CW;
+    const accent = pdfVerdictColor(r.verdict, r.score);
+    let y = 0;
+
+    const lh = size => size * 0.48;
+    const ensure = h => {
+      if (y + h > PDF.H - 24) { doc.addPage(); y = 20; }
+    };
+    const setText = (size, weight, color) => {
+      doc.setFont('helvetica', weight);
+      doc.setFontSize(size);
+      doc.setTextColor(color[0], color[1], color[2]);
+    };
+    const para = (txt, size, color, gapAfter) => {
+      setText(size, 'normal', color);
+      doc.splitTextToSize(pdfSafe(txt), CW).forEach(line => {
+        ensure(lh(size));
+        doc.text(line, M, y);
+        y += lh(size);
+      });
+      y += gapAfter || 0;
+    };
+    const heading = txt => {
+      ensure(16);
+      y += 3;
+      setText(8.5, 'bold', PDF.MUTED);
+      doc.text(pdfSafe(txt).toUpperCase(), M, y);
+      y += 2.2;
+      doc.setDrawColor(PDF.HAIR[0], PDF.HAIR[1], PDF.HAIR[2]);
+      doc.setLineWidth(0.2);
+      doc.line(M, y, M + CW, y);
+      y += 6;
+    };
+    // Full-width gradient track clipped to the value, mirroring the app.
+    const gradientBar = (x, top, w, h, pct) => {
+      const v = clampPct(pct);
+      doc.setFillColor(234, 234, 239);
+      doc.roundedRect(x, top, w, h, h / 2, h / 2, 'F');
+      const filled = w * v / 100;
+      if (filled <= 0) return;
+      const step = 0.5;
+      for (let px = 0; px < filled; px += step) {
+        const t = Math.min(px / w, 1) * (PDF.RAMP.length - 1);
+        const i = Math.min(Math.floor(t), PDF.RAMP.length - 2);
+        const f = t - i;
+        const c = PDF.RAMP[i].map((cv, k) => Math.round(cv + (PDF.RAMP[i + 1][k] - cv) * f));
+        doc.setFillColor(c[0], c[1], c[2]);
+        doc.rect(x + px, top, Math.min(step + 0.12, filled - px), h, 'F');
+      }
+    };
+
+    // ── Header ────────────────────────────────────────────────
+    y = 22;
+    setText(21, 'bold', PDF.INK);
+    doc.text('Credify', M, y);
+    setText(9, 'normal', PDF.MUTED);
+    doc.text('Credibility report', M + CW, y - 3.5, { align: 'right' });
+    doc.text(pdfSafe(new Date().toLocaleString(undefined, { dateStyle: 'long', timeStyle: 'short' })),
+             M + CW, y + 0.5, { align: 'right' });
+    y += 4;
+    doc.setDrawColor(PDF.HAIR[0], PDF.HAIR[1], PDF.HAIR[2]);
+    doc.setLineWidth(0.3);
+    doc.line(M, y, M + CW, y);
+    y += 10;
+
+    // ── Score panel ───────────────────────────────────────────
+    const panelTop = y;
+    const descLines = doc.splitTextToSize(pdfSafe(r.desc), CW - 62);
+    const panelH = Math.max(30, 18 + descLines.length * lh(9.5));
+    doc.setFillColor(PDF.SOFT[0], PDF.SOFT[1], PDF.SOFT[2]);
+    doc.roundedRect(M, panelTop, CW, panelH, 3, 3, 'F');
+    doc.setFillColor(accent[0], accent[1], accent[2]);
+    doc.rect(M, panelTop, 1.6, panelH, 'F');
+
+    setText(32, 'bold', accent);
+    doc.text(String(r.score != null ? r.score : '—'), M + 10, panelTop + panelH / 2 + 4);
+    const scoreW = doc.getTextWidth(String(r.score != null ? r.score : '—'));
+    setText(11, 'normal', PDF.MUTED);
+    doc.text('/100', M + 11 + scoreW, panelTop + panelH / 2 + 4);
+
+    const tx = M + 52;
+    setText(13, 'bold', PDF.INK);
+    doc.text(pdfSafe(r.label), tx, panelTop + 12);
+    setText(9.5, 'normal', PDF.MUTED);
+    descLines.forEach((line, i) => doc.text(line, tx, panelTop + 18 + i * lh(9.5)));
+    y = panelTop + panelH + 4;
+
+    // ── Tags ──────────────────────────────────────────────────
+    if ((r.tags || []).length) {
+      let tagX = M;
+      setText(8.5, 'normal', PDF.INK);
+      (r.tags || []).forEach(t => {
+        const label = pdfSafe(t.text);
+        if (!label) return;
+        const w = doc.getTextWidth(label) + 7;
+        if (tagX + w > M + CW) { tagX = M; y += 7; }
+        const base = t.kind === 'green' ? [22, 163, 74]
+                   : t.kind === 'yellow' ? [202, 138, 4]
+                   : t.kind === 'red' ? [220, 38, 38]
+                   : PDF.MUTED;
+        const bg = pdfTint(base, 0.88);
+        doc.setFillColor(bg[0], bg[1], bg[2]);
+        doc.roundedRect(tagX, y, w, 5.6, 2.8, 2.8, 'F');
+        doc.setTextColor(base[0], base[1], base[2]);
+        doc.text(label, tagX + 3.5, y + 3.8);
+        tagX += w + 3;
+      });
+      y += 10;
+    } else {
+      y += 3;
+    }
+
+    // ── Analysed input ────────────────────────────────────────
+    heading('Analysed input');
+    const preview = (currentReportMeta && currentReportMeta.preview) || '-';
+    para(preview, 10, PDF.INK, 2);
+    const meta = [];
+    if (r.input_type) meta.push('Input type: ' + r.input_type);
+    meta.push('Engine: ' + (r.engine === 'groq' ? 'Llama (Groq)'
+                          : r.engine === 'gemini' ? 'Gemini'
+                          : 'Signal-based analysis'));
+    para(meta.join('   ·   '), 8.5, PDF.MUTED, 4);
+
+    // ── Credibility breakdown ─────────────────────────────────
+    heading('Credibility breakdown');
+    ensure(14);
+    setText(10, 'bold', PDF.INK);
+    doc.text('Overall credibility', M, y);
+    setText(10, 'bold', accent);
+    doc.text(clampPct(r.score) + '%', M + CW, y, { align: 'right' });
+    y += 2.5;
+    gradientBar(M, y, CW, 3.4, r.score);
+    y += 7;
+    setText(8.5, 'normal', PDF.MUTED);
+    doc.text('Assessment confidence: ' + (r.confidence != null ? r.confidence + '%' : '-'), M, y);
+    y += 7;
+
+    (r.breakdown || []).forEach(dim => {
+      const v = clampPct(dim.value);
+      ensure(9);
+      setText(9.5, 'normal', PDF.INK);
+      doc.text(doc.splitTextToSize(pdfSafe(dim.label), 50)[0], M, y + 1.8);
+      gradientBar(M + 54, y, 100, 2.8, v);
+      setText(9, 'normal', PDF.MUTED);
+      doc.text(v + '%', M + CW, y + 1.8, { align: 'right' });
+      y += 8;
+    });
+    y += 1;
+
+    // ── Details ───────────────────────────────────────────────
+    if ((r.details || []).length) {
+      heading(r.input_type === 'Image' ? 'Image details'
+            : r.input_type === 'Article' ? 'Source details' : 'Details');
+      (r.details || []).forEach(d => {
+        ensure(8);
+        setText(9.5, 'normal', PDF.MUTED);
+        doc.text(pdfSafe(d.label), M, y);
+        setText(9.5, 'normal', PDF.INK);
+        const value = doc.splitTextToSize(pdfSafe(d.value == null ? '-' : d.value) || '-', CW - 60);
+        doc.text(value[0], M + CW, y, { align: 'right' });
+        y += 3;
+        doc.setDrawColor(PDF.HAIR[0], PDF.HAIR[1], PDF.HAIR[2]);
+        doc.setLineWidth(0.15);
+        doc.line(M, y, M + CW, y);
+        y += 4.5;
+      });
+      y += 1;
+    }
+
+    // ── Key findings ──────────────────────────────────────────
+    const findings = Array.isArray(r.key_findings) ? r.key_findings : [];
+    if (findings.length) {
+      heading('Key findings');
+      findings.forEach(f => {
+        const lines = doc.splitTextToSize(pdfSafe(f), CW - 6);
+        ensure(lines.length * lh(9.5) + 2);
+        doc.setFillColor(accent[0], accent[1], accent[2]);
+        doc.circle(M + 1.2, y - 1.3, 0.9, 'F');
+        setText(9.5, 'normal', PDF.INK);
+        lines.forEach((line, i) => doc.text(line, M + 6, y + i * lh(9.5)));
+        y += lines.length * lh(9.5) + 2;
+      });
+      y += 2;
+    }
+
+    // ── Analysis summary ──────────────────────────────────────
+    if (r.summary) {
+      heading('Analysis summary');
+      para(r.summary, 10, PDF.INK, 3);
+    }
+
+    // ── Recommendation ────────────────────────────────────────
+    if (r.recommendation) {
+      heading('What you should do');
+      const lines = doc.splitTextToSize(pdfSafe(r.recommendation), CW - 12);
+      const boxH = lines.length * lh(10) + 9;
+      ensure(boxH);
+      const bg = pdfTint(accent, 0.90);
+      doc.setFillColor(bg[0], bg[1], bg[2]);
+      doc.roundedRect(M, y - 4, CW, boxH, 2.5, 2.5, 'F');
+      setText(10, 'normal', PDF.INK);
+      lines.forEach((line, i) => doc.text(line, M + 6, y + 2 + i * lh(10)));
+      y += boxH;
+    }
+
+    // ── Footer on every page ──────────────────────────────────
+    const pages = doc.internal.getNumberOfPages();
+    for (let p = 1; p <= pages; p++) {
+      doc.setPage(p);
+      doc.setDrawColor(PDF.HAIR[0], PDF.HAIR[1], PDF.HAIR[2]);
+      doc.setLineWidth(0.2);
+      doc.line(M, PDF.H - 17, M + CW, PDF.H - 17);
+      setText(7.5, 'normal', PDF.MUTED);
+      const note = doc.splitTextToSize(
+        'Credify produces automated credibility estimates, not statements of fact. '
+        + 'Verify independently before acting on this report.', CW - 26);
+      note.forEach((line, i) => doc.text(line, M, PDF.H - 13 + i * 3));
+      doc.text('Page ' + p + ' of ' + pages, M + CW, PDF.H - 13, { align: 'right' });
+    }
+
+    const stamp = new Date().toISOString().slice(0, 10);
+    doc.save('credify-report-' + (r.verdict || 'result') + '-' + stamp + '.pdf');
+  } catch (err) {
+    console.error('[report] export failed', err);
+    if (btn) flashButton(btn, 'Export failed', original);
+    return;
+  } finally {
+    if (btn && btn.textContent === 'Preparing…') {
+      btn.disabled = false;
+      btn.textContent = original;
+    }
+  }
+}
+
+// Briefly show a message on a button, then restore its label.
+function flashButton(btn, message, restoreTo) {
+  const back = restoreTo || btn.textContent;
+  btn.disabled = true;
+  btn.textContent = message;
+  setTimeout(() => { btn.textContent = back; btn.disabled = false; }, 2000);
 }
 
 // ── Local fallback scorer (mirrors the backend heuristic) ──────

@@ -624,7 +624,7 @@
 
     <div class="action-bar">
       <button class="btn-recheck" onclick="runScan()">↺ Re-check</button>
-      <button class="btn-share">↗ Share report</button>
+      <button class="btn-download" id="rc-download" onclick="downloadReport(this)">↓ Download report</button>
       <button class="btn-outline-purple" onclick="openFlagForm()">⚑ Flag issue</button>
     </div>
     </div><!-- /result-main -->
@@ -958,6 +958,7 @@
 
 <script src="https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit" async defer></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.2/dist/jspdf.umd.min.js"></script>
 <script src="config.js"></script>
 <script src="app.js"></script>
 <script src="admin.js"></script>
