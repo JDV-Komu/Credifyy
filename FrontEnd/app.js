@@ -95,19 +95,38 @@ function finishLoadingSteps() {
 }
 
 // ── Animate credibility bars on result screens ──────────────────
+// Sets a bar's value. data-pct is the source of truth and is never overwritten
+// by the animation, so animateBars() can safely run more than once.
+function setBarPct(el, pct) {
+  if (!el) return;
+  const v = clampPct(pct);
+  el.dataset.pct = v;
+  el.style.setProperty('--pct', v + '%');
+}
+
+// goto() removes .active from every screen then adds it back to the target, so
+// the results screen emits two class mutations and this runs twice per
+// navigation. Targets therefore come from data-pct, never from the live value,
+// and the work is collapsed into a single frame.
 function animateBars() {
-  // Credibility bars: a full-width gradient clipped back to the score, so the
-  // colour at the tip of the bar matches the value it represents.
-  document.querySelectorAll('.cred-fill').forEach(bar => {
-    const target = bar.style.getPropertyValue('--pct') || '0';
-    bar.style.setProperty('--pct', '0');
-    setTimeout(() => { bar.style.setProperty('--pct', target); }, 80);
-  });
-  // Trend bars still use plain width fills.
-  document.querySelectorAll('.trend-bar-fill').forEach(bar => {
-    const target = bar.style.width;
-    bar.style.width = '0';
-    setTimeout(() => { bar.style.width = target; }, 80);
+  if (animateBars.queued) return;
+  animateBars.queued = true;
+
+  requestAnimationFrame(() => {
+    animateBars.queued = false;
+
+    const reset = (el, apply) => {
+      const target = el.dataset.pct;
+      if (target == null) return;
+      apply(el, '0');
+      requestAnimationFrame(() => requestAnimationFrame(() => apply(el, target)));
+    };
+
+    document.querySelectorAll('.cred-fill').forEach(bar =>
+      reset(bar, (el, v) => el.style.setProperty('--pct', v + '%')));
+
+    document.querySelectorAll('.trend-bar-fill').forEach(bar =>
+      reset(bar, (el, v) => { el.style.width = v + '%'; }));
   });
 }
 document.querySelectorAll('[id^="screen-result"], #screen-trends').forEach(screen => {
@@ -320,7 +339,7 @@ function renderResult(r) {
 
   // Overall bar + confidence
   const ob = document.getElementById('rc-bar-overall');
-  if (ob) ob.style.setProperty('--pct', clampPct(r.score));
+  setBarPct(ob, r.score);
   setText('rc-val-overall', r.score + '%');
   setText('rc-confidence', (r.confidence != null ? r.confidence : '—') + '%');
 
@@ -334,7 +353,7 @@ function renderResult(r) {
       row.className = 'cred-row';
       row.innerHTML =
         `<span class="cred-key">${escapeHtml(dim.label)}</span>` +
-        `<div class="cred-bar"><div class="cred-fill" style="--pct:${clampPct(v)}"></div></div>` +
+        `<div class="cred-bar"><div class="cred-fill" data-pct="${clampPct(v)}" style="--pct:${clampPct(v)}%"></div></div>` +
         `<span class="cred-val">${v}%</span>`;
       rows.appendChild(row);
     });
@@ -1582,7 +1601,7 @@ async function loadTrends() {
         `<div class="trend-count">${Number(t.flagged_count).toLocaleString()}</div>` +
         `<div class="trend-lbl">flagged articles</div>` +
         `<div class="trend-bar-row"><div class="trend-bar-track">` +
-          `<div class="trend-bar-fill" style="width:${clampPct(t.pct)}%;background:${colorOf(t.pct)};"></div>` +
+          `<div class="trend-bar-fill" data-pct="${clampPct(t.pct)}" style="width:${clampPct(t.pct)}%;background:${colorOf(t.pct)};"></div>` +
         `</div><span class="trend-pct">${clampPct(t.pct)}%</span></div>` +
       `</div>`).join('');
   } catch (e) { /* keep hardcoded fallback */ }
