@@ -270,6 +270,132 @@
   </main>
 </div>
 
+
+<!-- ==================== ACCOUNT INFO CHANGING SCREENS ========== -->
+
+<!-- ========== SCREEN: CHANGE EMAIL ========== -->
+<div class="screen" id="screen-change-email">
+  <nav class="navbar">
+    <div class="logo">Credify</div>
+    <div class="nav-right"><button class="btn-ghost" onclick="goto('screen-profile')">← Back</button></div>
+  </nav>
+  <div class="hero-bg"><div class="grid-overlay"></div><div class="glow-blob" style="opacity:0.35"></div></div>
+  <main class="form-section">
+    <div class="form-card">
+      <div class="form-logo-mark">✉</div>
+      <h2 class="form-title">Change email</h2>
+      <p class="form-sub">Enter your current password to confirm, then your new email address</p>
+      <div class="field-group">
+        <label class="field-label">Current password</label>
+        <div class="password-wrap">
+          <input type="password" class="field-input" id="change-email-pass" placeholder="Your current password"/>
+          <button class="eye-btn" onclick="togglePass('change-email-pass', this)" tabindex="-1"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg></button>
+        </div>
+      </div>
+      <div class="field-group">
+        <label class="field-label">New email address</label>
+        <input type="email" class="field-input" id="new-email-input" placeholder="new@example.com"/>
+      </div>
+      <p class="form-error" id="change-email-error"></p>
+      <button class="btn-submit" onclick="handleChangeEmail()">Update email <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg></button>
+      <p class="form-footnote" style="margin-top:12px"><span class="form-link dim" onclick="goto('screen-profile')">← Cancel</span></p>
+    </div>
+  </main>
+</div>
+
+<!-- ========== SCREEN: CHANGE PASSWORD ========== -->
+<div class="screen" id="screen-change-password">
+  <nav class="navbar">
+    <div class="logo">Credify</div>
+    <div class="nav-right"><button class="btn-ghost" onclick="goto('screen-profile')">← Back</button></div>
+  </nav>
+  <div class="hero-bg"><div class="grid-overlay"></div><div class="glow-blob" style="opacity:0.35"></div></div>
+  <main class="form-section">
+    <div class="form-card">
+      <div class="form-logo-mark">🔑</div>
+      <h2 class="form-title">Change password</h2>
+      <p class="form-sub">Enter your current password to confirm, then choose a new one</p>
+      <div class="field-group">
+        <label class="field-label">Current password</label>
+        <div class="password-wrap">
+          <input type="password" class="field-input" id="change-pass-current" placeholder="Your current password"/>
+          <button class="eye-btn" onclick="togglePass('change-pass-current', this)" tabindex="-1"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg></button>
+        </div>
+      </div>
+      <div class="field-group">
+        <label class="field-label">New password</label>
+        <div class="password-wrap">
+          <input type="password" class="field-input" id="change-pass-new" placeholder="New password" oninput="checkStrengthFor(this.value, 'change-strength-fill', 'change-strength-label')"/>
+          <button class="eye-btn" onclick="togglePass('change-pass-new', this)" tabindex="-1"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg></button>
+        </div>
+        <div class="strength-row"><div class="strength-track"><div class="strength-fill" id="change-strength-fill"></div></div><span class="strength-label" id="change-strength-label"></span></div>
+      </div>
+      <div class="field-group">
+        <label class="field-label">Confirm new password</label>
+        <div class="password-wrap">
+          <input type="password" class="field-input" id="change-pass-confirm" placeholder="Repeat new password"/>
+          <button class="eye-btn" onclick="togglePass('change-pass-confirm', this)" tabindex="-1"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg></button>
+        </div>
+      </div>
+      <p class="form-error" id="change-pass-error"></p>
+      <button class="btn-submit" onclick="handleChangePassword()">Update password <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg></button>
+      <p class="form-footnote" style="margin-top:12px"><span class="form-link dim" onclick="goto('screen-profile')">← Cancel</span></p>
+    </div>
+  </main>
+</div>
+
+<!-- ========== SCREEN: DELETE ACCOUNT ========== -->
+<div class="screen" id="screen-delete-account">
+  <nav class="navbar">
+    <div class="logo">Credify</div>
+    <div class="nav-right"><button class="btn-ghost" onclick="goto('screen-profile')">← Back</button></div>
+  </nav>
+  <div class="hero-bg"><div class="grid-overlay"></div><div class="glow-blob" style="opacity:0.35"></div></div>
+  <main class="form-section">
+    <div class="form-card">
+      <div class="form-logo-mark" style="background:rgba(248,113,113,0.15);color:#F87171">⚠</div>
+      <h2 class="form-title">Delete account</h2>
+      <p class="form-sub">This is permanent. All your reports, history, and data will be erased and cannot be recovered.</p>
+      <div class="field-group">
+        <label class="field-label">Enter your password to continue</label>
+        <div class="password-wrap">
+          <input type="password" class="field-input" id="delete-confirm-pass" placeholder="Your password"/>
+          <button class="eye-btn" onclick="togglePass('delete-confirm-pass', this)" tabindex="-1"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg></button>
+        </div>
+      </div>
+      <p class="form-error" id="delete-account-error"></p>
+      <button class="btn-submit" style="background:#F87171;box-shadow:none" onclick="handleDeleteAccountConfirm()">Continue to delete <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg></button>
+      <p class="form-footnote" style="margin-top:12px"><span class="form-link dim" onclick="goto('screen-profile')">← Cancel, keep my account</span></p>
+    </div>
+  </main>
+</div>
+
+<!-- ========== MODAL: CONFIRM CLEAR HISTORY ========== -->
+<div class="modal-overlay" id="clear-history-modal" onclick="if(event.target===this) closeClearHistoryModal()">
+  <div class="confirm-card">
+    <div class="confirm-icon">🗑</div>
+    <h3 class="confirm-title">Clear all history?</h3>
+    <p class="confirm-text">This will permanently delete all your saved scan reports. This cannot be undone.</p>
+    <div class="confirm-actions">
+      <button class="btn-ghost" onclick="closeClearHistoryModal()">Cancel</button>
+      <button class="btn-submit" style="background:#F87171;box-shadow:none;flex:1" onclick="executeClearHistory()">Yes, clear all</button>
+    </div>
+  </div>
+</div>
+
+<!-- ========== MODAL: CONFIRM DELETE ACCOUNT ========== -->
+<div class="modal-overlay" id="delete-account-modal" onclick="if(event.target===this) closeDeleteAccountModal()">
+  <div class="confirm-card">
+    <div class="confirm-icon">⚠️</div>
+    <h3 class="confirm-title">Are you absolutely sure?</h3>
+    <p class="confirm-text">Your account and all associated data will be permanently deleted. There is no way to recover it.</p>
+    <div class="confirm-actions">
+      <button class="btn-ghost" onclick="closeDeleteAccountModal()">Cancel</button>
+      <button class="btn-submit" style="background:#F87171;box-shadow:none;flex:1" onclick="executeDeleteAccount()">Delete my account</button>
+    </div>
+  </div>
+</div>
+
 <!-- ========== SCREEN: FORGOT PASSWORD (enter email) ========== -->
 <div class="screen" id="screen-forgot">
   <nav class="navbar">
@@ -663,11 +789,10 @@
       <div class="stat-card"><div class="stat-big red">5</div><div class="stat-lbl">Flagged</div></div>
       <div class="stat-card"><div class="stat-big purple">12</div><div class="stat-lbl">This month</div></div>
     </div>
-    <div class="setting-item"><span class="setting-name">Email address</span><span class="setting-action" onclick="changeEmail('skibidiT0ilet@sixseven.com')">Change</span></div>
-    <div class="setting-item"><span class="setting-name">Password</span><span class="setting-action"onclick="changePassword('skibidiT0ilet')">Update</span></div>
-    <div class="setting-item"><span class="setting-name">Notification preferences</span><span class="setting-action">Manage</span></div>
-    <div class="setting-item"><span class="setting-name">Clear verification history</span><span class="setting-action danger">Clear all</span></div>
-    <div class="setting-item"><span class="setting-name">Delete account</span><span class="setting-action danger" onclick="deleteAccount()">Delete</span></div>
+    <div class="setting-item"><span class="setting-name">Email address</span><span class="setting-action" onclick="goto('screen-change-email')">Change</span></div>
+    <div class="setting-item"><span class="setting-name">Password</span><span class="setting-action" onclick="goto('screen-change-password')">Update</span></div>
+    <div class="setting-item"><span class="setting-name">Clear verification history</span><span class="setting-action danger" onclick="confirmClearHistory()">Clear all</span></div>
+    <div class="setting-item"><span class="setting-name">Delete account</span><span class="setting-action danger" onclick="goto('screen-delete-account')">Delete</span></div>
     <button class="btn-ghost-full" style="margin-top:24px;" onclick="handleLogout()">Sign out</button>
   </main>
 </div>
