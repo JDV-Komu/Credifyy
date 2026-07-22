@@ -18,6 +18,8 @@ function goto(screenId) {
     // Captcha boxes have zero width while their screen is hidden, so they
     // can't be scaled until now. Re-fit once this screen is visible.
     if (typeof fitCaptchas === 'function') requestAnimationFrame(fitCaptchas);
+    // Restart the analysing timeline every time the loading screen opens.
+    if (screenId === 'screen-loading') startLoadingSteps();
   }
 }
 
@@ -29,12 +31,80 @@ function setFilter(el) {
 }
 
 // ── Loading screen ─────────────────────────────────────────────
-// (The old code auto-jumped to a hardcoded 98% result after 3.2s.
-//  Navigation is now driven by runScan() once the real analysis returns.)
+// Steps run on an estimated timeline so the screen feels alive, then snap to
+// complete the moment the real analysis returns. The last step is never
+// auto-completed: if the backend is slow, it holds there until the result lands.
+
+const LOADING_STEP_MS = [700, 1100, 2600, 1500];   // dwell time per step, last step excluded
+let loadingTimers = [];
+
+function clearLoadingTimers() {
+  loadingTimers.forEach(clearTimeout);
+  loadingTimers = [];
+}
+
+function setStepState(step, state) {
+  if (!step) return;
+  const dot = step.querySelector('.step-dot');
+  step.classList.remove('pending', 'active', 'done');
+  step.classList.add(state);
+  if (dot) {
+    dot.classList.remove('pending', 'active', 'done');
+    dot.classList.add(state);
+  }
+}
+
+function loadingStepEls() {
+  return Array.from(document.querySelectorAll('#loading-steps .step'));
+}
+
+function startLoadingSteps() {
+  clearLoadingTimers();
+  const steps = loadingStepEls();
+  if (!steps.length) return;
+
+  steps.forEach(s => setStepState(s, 'pending'));
+  // Force a reflow so the reset paints before the first step lights up.
+  void steps[0].offsetWidth;
+  setStepState(steps[0], 'active');
+
+  let at = 0;
+  LOADING_STEP_MS.forEach((ms, i) => {
+    if (i + 1 >= steps.length) return;
+    at += ms;
+    loadingTimers.push(setTimeout(() => {
+      setStepState(steps[i], 'done');
+      setStepState(steps[i + 1], 'active');
+    }, at));
+  });
+}
+
+// Completes any remaining steps in a quick cascade, then resolves so the
+// caller can move on to the result screen.
+function finishLoadingSteps() {
+  clearLoadingTimers();
+  const remaining = loadingStepEls().filter(s => !s.classList.contains('done'));
+  return new Promise(resolve => {
+    let at = 0;
+    remaining.forEach(step => {
+      at += 130;
+      loadingTimers.push(setTimeout(() => setStepState(step, 'done'), at));
+    });
+    loadingTimers.push(setTimeout(resolve, at + 420));
+  });
+}
 
 // ── Animate credibility bars on result screens ──────────────────
 function animateBars() {
-  document.querySelectorAll('.cred-fill, .trend-bar-fill').forEach(bar => {
+  // Credibility bars: a full-width gradient clipped back to the score, so the
+  // colour at the tip of the bar matches the value it represents.
+  document.querySelectorAll('.cred-fill').forEach(bar => {
+    const target = bar.style.getPropertyValue('--pct') || '0';
+    bar.style.setProperty('--pct', '0');
+    setTimeout(() => { bar.style.setProperty('--pct', target); }, 80);
+  });
+  // Trend bars still use plain width fills.
+  document.querySelectorAll('.trend-bar-fill').forEach(bar => {
     const target = bar.style.width;
     bar.style.width = '0';
     setTimeout(() => { bar.style.width = target; }, 80);
@@ -169,7 +239,6 @@ async function runScan() {
     ? displayLabel.slice(0, 90) + '…' : (displayLabel || 'Analyzing…');
   goto('screen-loading');
 
-  const startedAt = Date.now();
   let report;
   try {
     // Abort if the backend doesn't answer within 75s, so the loading screen
@@ -191,18 +260,18 @@ async function runScan() {
     report = heuristicScanJS(payload);
   }
 
-  const elapsed = Date.now() - startedAt;
-  setTimeout(() => {
-    renderResult(report);
-    goto('screen-result-high');
-    currentReportMeta = {
-      preview: displayLabel,
-      score: report.score,
-      verdict: report.verdict,
-      report_id: null // filled in by saveReport once the row exists
-    };
-    saveReport(payload, report); // account users: persist to report history
-  }, Math.max(0, 1200 - elapsed));
+  // Race the remaining steps to completion, then reveal the result.
+  await finishLoadingSteps();
+
+  renderResult(report);
+  goto('screen-result-high');
+  currentReportMeta = {
+    preview: displayLabel,
+    score: report.score,
+    verdict: report.verdict,
+    report_id: null // filled in by saveReport once the row exists
+  };
+  saveReport(payload, report); // account users: persist to report history
 }
 
 // Paint a report object into the result screen.
@@ -218,7 +287,9 @@ function renderResult(r) {
     const el = document.getElementById(id);
     if (el) el.textContent = txt;
   };
-  const barColor = v => v >= 70 ? 'var(--green)' : v >= 40 ? 'var(--yellow)' : 'var(--red)';
+  // Bars are coloured by the shared red-to-green ramp in CSS (--score-ramp);
+  // JS only supplies the percentage via clampPct(), so the colour under the tip
+  // of a bar always matches the value it represents.
 
   setClass('rc-card', 'score-card');
   setClass('rc-circle', 'score-circle');
@@ -248,7 +319,7 @@ function renderResult(r) {
 
   // Overall bar + confidence
   const ob = document.getElementById('rc-bar-overall');
-  if (ob) { ob.style.width = r.score + '%'; ob.style.background = barColor(r.score); }
+  if (ob) ob.style.setProperty('--pct', clampPct(r.score));
   setText('rc-val-overall', r.score + '%');
   setText('rc-confidence', (r.confidence != null ? r.confidence : '—') + '%');
 
@@ -262,7 +333,7 @@ function renderResult(r) {
       row.className = 'cred-row';
       row.innerHTML =
         `<span class="cred-key">${escapeHtml(dim.label)}</span>` +
-        `<div class="cred-bar"><div class="cred-fill" style="width:${v}%;background:${barColor(v)}"></div></div>` +
+        `<div class="cred-bar"><div class="cred-fill" style="--pct:${clampPct(v)}"></div></div>` +
         `<span class="cred-val">${v}%</span>`;
       rows.appendChild(row);
     });

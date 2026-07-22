@@ -548,12 +548,12 @@
     <div class="spinner"></div>
     <h2 class="loading-title">Analyzing your source</h2>
     <p class="loading-sub">This usually takes a few seconds</p>
-    <div class="steps-list">
-      <div class="step done"><div class="step-dot done"></div><span>Reading your input</span></div>
-      <div class="step done"><div class="step-dot done"></div><span>Identifying publisher and source</span></div>
-      <div class="step active"><div class="step-dot active"></div><span>Running credibility analysis...</span></div>
-      <div class="step pending"><div class="step-dot pending"></div><span>Scoring signals</span></div>
-      <div class="step pending"><div class="step-dot pending"></div><span>Generating your result</span></div>
+    <div class="steps-list" id="loading-steps">
+      <div class="step pending"><div class="step-dot pending"></div><span class="step-label">Reading your input</span></div>
+      <div class="step pending"><div class="step-dot pending"></div><span class="step-label">Identifying publisher and source</span></div>
+      <div class="step pending"><div class="step-dot pending"></div><span class="step-label">Running credibility analysis</span></div>
+      <div class="step pending"><div class="step-dot pending"></div><span class="step-label">Scoring signals</span></div>
+      <div class="step pending"><div class="step-dot pending"></div><span class="step-label">Generating your result</span></div>
     </div>
   </main>
 </div>
@@ -596,7 +596,7 @@
     <div class="two-col">
       <div class="info-box">
         <div class="box-title">Credibility breakdown</div>
-        <div class="cred-row"><span class="cred-key" style="font-weight:600;color:var(--text2)">Overall credibility</span><div class="cred-bar" style="height:6px"><div class="cred-fill" id="rc-bar-overall" style="width:0%;background:var(--green)"></div></div><span class="cred-val" id="rc-val-overall">0%</span></div>
+        <div class="cred-row"><span class="cred-key" style="font-weight:600;color:var(--text2)">Overall credibility</span><div class="cred-bar" style="height:6px"><div class="cred-fill" id="rc-bar-overall" style="--pct:0"></div></div><span class="cred-val" id="rc-val-overall">0%</span></div>
         <div class="conf-note">Assessment confidence: <span id="rc-confidence">—</span></div>
         <div style="height:1px;background:var(--border);margin:10px 0 14px"></div>
         <div id="rc-breakdown-rows"></div>

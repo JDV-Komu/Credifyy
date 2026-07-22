@@ -26,6 +26,15 @@
   --red: #F87171;
   --red-dim: rgba(239,68,68,0.10);
   --red-border: rgba(239,68,68,0.22);
+  --orange: #FB923C;
+  --lime: #A3E635;
+  /* Score ramp: the colour under the tip of a bar is the verdict for that value. */
+  --score-ramp: linear-gradient(90deg,
+    var(--red)    0%,
+    var(--orange) 26%,
+    var(--yellow) 50%,
+    var(--lime)   74%,
+    var(--green) 100%);
   --text: #f0f0f5;
   --text2: rgba(240,240,245,0.7);
   --text3: rgba(240,240,245,0.45);
@@ -718,7 +727,7 @@ button { cursor: pointer; font-family: 'Instrument Sans', sans-serif; border: no
   display: flex;
   flex-direction: column;
   align-items: flex-start;
-  gap: 12px;
+  gap: 14px;
   text-align: left;
   background: var(--bg3);
   border: 0.5px solid var(--border);
@@ -727,16 +736,100 @@ button { cursor: pointer; font-family: 'Instrument Sans', sans-serif; border: no
   width: 100%;
   max-width: 380px;
 }
-.step { display: flex; align-items: center; gap: 12px; font-size: 13.5px; color: var(--text3); }
+
+.step {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-height: 22px;
+  font-size: 13.5px;
+  color: var(--text3);
+  transition: color 0.35s ease;
+}
 .step.done { color: var(--text2); }
 .step.active { color: var(--text); }
-.step-dot {
-  width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0;
+
+/* Rail joining each dot to the next: grey track, green fill that grows on completion. */
+.step:not(:last-child)::before,
+.step:not(:last-child)::after {
+  content: '';
+  position: absolute;
+  left: 6px; top: 18px; bottom: -14px;
+  width: 2px;
+  border-radius: 2px;
 }
-.step-dot.done { background: var(--green); }
-.step-dot.active { background: var(--purple-light); box-shadow: 0 0 0 3px rgba(167,139,250,0.2); animation: pulse 1.2s ease infinite; }
+.step:not(:last-child)::before { background: var(--border2); }
+.step:not(:last-child)::after {
+  background: var(--green);
+  transform: scaleY(0);
+  transform-origin: top;
+  transition: transform 0.45s ease;
+}
+.step.done:not(:last-child)::after { transform: scaleY(1); }
+
+.step-dot {
+  position: relative;
+  z-index: 1;
+  width: 14px; height: 14px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  background: var(--border2);
+  transition: background 0.3s ease, box-shadow 0.3s ease, transform 0.3s ease;
+}
+.step-dot::after {
+  content: '✓';
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 9px;
+  font-weight: 700;
+  line-height: 1;
+  color: var(--bg);
+  opacity: 0;
+  transform: scale(0.3);
+  transition: opacity 0.2s ease, transform 0.3s cubic-bezier(.34,1.56,.64,1);
+}
 .step-dot.pending { background: var(--border2); }
+.step-dot.done { background: var(--green); box-shadow: 0 0 0 3px var(--green-dim); }
+.step-dot.done::after { opacity: 1; transform: scale(1); }
+.step-dot.active { background: var(--purple-light); animation: dotPulse 1.5s ease-in-out infinite; }
+
+@keyframes dotPulse {
+  0%, 100% { box-shadow: 0 0 0 3px rgba(167,139,250,0.22), 0 0 10px rgba(167,139,250,0.35); transform: scale(1); }
+  50%      { box-shadow: 0 0 0 7px rgba(167,139,250,0.06), 0 0 18px rgba(167,139,250,0.60); transform: scale(1.14); }
+}
 @keyframes pulse { 0%,100%{box-shadow:0 0 0 3px rgba(167,139,250,0.2)} 50%{box-shadow:0 0 0 6px rgba(167,139,250,0.1)} }
+
+/* The step currently running reads as "in progress" via a light sweep. */
+.step.active .step-label {
+  background: linear-gradient(90deg, var(--text2) 0%, #ffffff 45%, var(--text2) 90%);
+  background-size: 220% 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  color: transparent;
+  animation: stepShimmer 2s linear infinite;
+}
+@keyframes stepShimmer {
+  from { background-position: 120% 0; }
+  to   { background-position: -60% 0; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .spinner { animation: none; }
+  .step-dot.active { animation: none; box-shadow: 0 0 0 3px rgba(167,139,250,0.22); }
+  .step.active .step-label {
+    animation: none;
+    -webkit-text-fill-color: currentColor;
+    color: var(--text);
+    background: none;
+  }
+  .cred-fill,
+  .step:not(:last-child)::after { transition: none; }
+}
 
 /* ===========================
    RESULT SECTION
@@ -828,8 +921,26 @@ button { cursor: pointer; font-family: 'Instrument Sans', sans-serif; border: no
 }
 .cred-row:last-child { margin-bottom: 0; }
 .cred-key { font-size: 12px; color: var(--text3); min-width: 110px; flex-shrink: 0; }
-.cred-bar { flex: 1; background: rgba(255,255,255,0.07); border-radius: 100px; height: 4px; overflow: hidden; }
-.cred-fill { height: 100%; border-radius: 100px; transition: width 0.7s ease; }
+/* The gradient is painted across the FULL track and then clipped back to the
+   score, so a 30% bar stays red and a 90% bar runs all the way to green.
+   Driven by a --pct custom property (unitless number, 0-100). */
+.cred-bar {
+  position: relative;
+  flex: 1;
+  background: rgba(255,255,255,0.07);
+  border-radius: 100px;
+  height: 5px;
+  overflow: hidden;
+}
+.cred-fill {
+  --pct: 0;
+  position: absolute;
+  inset: 0;
+  border-radius: 100px;
+  background: var(--score-ramp);
+  clip-path: inset(0 calc(100% - var(--pct) * 1%) 0 0);
+  transition: clip-path 0.9s cubic-bezier(.22,.9,.28,1);
+}
 .cred-val { font-size: 12px; font-weight: 600; color: var(--text2); min-width: 38px; text-align: right; flex-shrink: 0; font-variant-numeric: tabular-nums; }
 .otp-input { text-align: center; font-size: 26px; font-weight: 600; letter-spacing: 0.5em; padding-left: 0.5em; font-variant-numeric: tabular-nums; }
 .conf-note { font-size: 11px; color: var(--text3); margin: 6px 0 0; }
