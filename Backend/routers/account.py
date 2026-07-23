@@ -22,9 +22,21 @@ def get_supabase():
 
 class EmailBody(BaseModel):
     email: str
+    current_password: str
 
 class PasswordBody(BaseModel):
     password: str
+    current_password: str
+
+class DeleteBody(BaseModel):
+    current_password: str
+
+def verify_password(email: str, password: str):
+    supabase = get_supabase()
+    try:
+        supabase.auth.sign_in_with_password({"email": email, "password": password})
+    except Exception:
+        raise HTTPException(status_code=401, detail="Incorrect password")
 
 @router.put("/account/email")
 async def change_email(body: EmailBody, authorization: str = Header(alias="authorization")):
@@ -33,8 +45,9 @@ async def change_email(body: EmailBody, authorization: str = Header(alias="autho
     user = supabase.auth.get_user(token)
     if not user:
         raise HTTPException(status_code=401, detail="Invalid token")
-    supabase.auth.admin.update_user_by_id(user.user.id, { "email": body.email })
-    return { "message": "Email updated" }
+    verify_password(user.user.email, body.current_password)
+    supabase.auth.admin.update_user_by_id(user.user.id, {"email": body.email})
+    return {"message": "Email updated"}
 
 @router.put("/account/password")
 async def change_password(body: PasswordBody, authorization: str = Header(alias="authorization")):
@@ -43,39 +56,42 @@ async def change_password(body: PasswordBody, authorization: str = Header(alias=
     user = supabase.auth.get_user(token)
     if not user:
         raise HTTPException(status_code=401, detail="Invalid token")
-    supabase.auth.admin.update_user_by_id(user.user.id, { "password": body.password })
-    return { "message": "Password updated" }
+    verify_password(user.user.email, body.current_password)
+    supabase.auth.admin.update_user_by_id(user.user.id, {"password": body.password})
+    return {"message": "Password updated"}
 
 @router.delete("/account")
-async def delete_account(authorization: str = Header(alias="authorization")):
+async def delete_account(body: DeleteBody, authorization: str = Header(alias="authorization")):
     token = authorization.replace("Bearer ", "")
     supabase = get_supabase()
     user = supabase.auth.get_user(token)
     if not user:
         raise HTTPException(status_code=401, detail="Invalid token")
+    verify_password(user.user.email, body.current_password)
     supabase.auth.admin.delete_user(user.user.id)
-    return { "message": "Account deleted" }
+    return {"message": "Account deleted"}
 
 
-## this is where the change delete email stuff happens
-# @router.put("/account/email")
-# async def change_email(body: dict, authorization: str = Header(alias="authorization")):
-#     token = authorization.replace("Bearer ", "")
-#     supabase = get_supabase()
-    user = supabase.auth.get_user(token)
-#     if not user:
-#         raise HTTPException(status_code=401, detail="Invalid token")
-#     supabase.auth.admin.update_user_by_id(user.user.id, { "email": body["email"] })
-#     return { "message": "Email updated" }
+## getting user stats (gyatt) ##
+# ## this is where the change delete email stuff happens
+# # @router.put("/account/email")
+# # async def change_email(body: dict, authorization: str = Header(alias="authorization")):
+# #     token = authorization.replace("Bearer ", "")
+# #     supabase = get_supabase()
+#     user = supabase.auth.get_user(token)
+# #     if not user:
+# #         raise HTTPException(status_code=401, detail="Invalid token")
+# #     supabase.auth.admin.update_user_by_id(user.user.id, { "email": body["email"] })
+# #     return { "message": "Email updated" }
 
-# @router.delete("/account")
-# async def delete_account(authorization: str = Header(alias="authorization")):
-#     token = authorization.replace("Bearer ", "")
-#     # Get user from token first
-#     supabase = get_supabase()
-    user = supabase.auth.get_user(token)
-#     if not user:
-#         raise HTTPException(status_code=401, detail="Invalid token")
+# # @router.delete("/account")
+# # async def delete_account(authorization: str = Header(alias="authorization")):
+# #     token = authorization.replace("Bearer ", "")
+# #     # Get user from token first
+# #     supabase = get_supabase()
+#     user = supabase.auth.get_user(token)
+# #     if not user:
+# #         raise HTTPException(status_code=401, detail="Invalid token")
     
-#     supabase.auth.admin.delete_user(user.user.id)
-#     return { "message": "Account deleted" }
+# #     supabase.auth.admin.delete_user(user.user.id)
+# #     return { "message": "Account deleted" }

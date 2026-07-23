@@ -190,8 +190,19 @@ def spread(score, seed):
         nudged = min(44, nudged)
     return clamp(nudged)
 
+TOPICS = [
+    'Politics',
+    'Health', 
+    'Economy',
+    'Science',
+    'Celebrities',
+    'Disaster',
+    'Technology',
+    'Gaming',
+    'Other'
+]
 
-def assemble(score, confidence, input_type, breakdown, details, tags, summary, engine,
+def assemble(score, confidence, input_type, breakdown, details, tags, summary, engine, topic,
              key_findings=None, recommendation=None):
     verdict, label, desc = verdict_from(score)
     full_details = [
@@ -207,6 +218,7 @@ def assemble(score, confidence, input_type, breakdown, details, tags, summary, e
         "input_type": input_type,
         "breakdown": breakdown,
         "details": full_details,
+        "topic": topic or "General",
         "tags": tags,
         "summary": summary,
         "key_findings": key_findings or [],
@@ -413,7 +425,7 @@ def heuristic_text_or_article(user_input):
         key_findings.append("Language stays largely neutral, with no emotional-manipulation patterns")
 
     return assemble(score, confidence, input_type, breakdown, details, tags,
-                    summary, "heuristic",
+                    summary, "heuristic", "Other",
                     key_findings=key_findings[:6],
                     recommendation=build_recommendation(score))
 
@@ -529,7 +541,7 @@ def heuristic_image(caption, filename):
         ]
 
     return assemble(score, confidence, "Image", breakdown, details, tags,
-                    summary, "heuristic",
+                    summary, "heuristic", "Gaming",
                     key_findings=key_findings,
                     recommendation=build_recommendation(score))
 
@@ -563,7 +575,8 @@ Return ONLY a JSON object (no markdown, no backticks) with EXACTLY this shape:
   "flags":     ["<short warning or note>"],
   "key_findings": ["<4-6 specific, concrete findings about THIS item, one short sentence each>"],
   "summary": "<5-8 sentences of detailed plain-English analysis>",
-  "recommendation": "<1-2 sentences telling the reader exactly what to do next>"
+  "recommendation": "<1-2 sentences telling the reader exactly what to do next>",
+  "topic": "<one value from this exact list: Politics, Health, Economy, Science, Celebrities, Disaster, Technology, Gaming, Other>",
 }
 
 Scoring bands (verdict MUST match the score):
@@ -592,6 +605,11 @@ not vague statements like "the source is questionable".
 RECOMMENDATION: actionable next step matched to the verdict (share it / verify it first on
 specific fact-checking sites / do not share and warn others).
 
+TOPIC RULE: the "topic" field must be exactly one value from this list (case-sensitive):
+Politics, Health, Economy, Science, Celebrities, Disaster, Technology, Gaming, Other
+Pick the single best match for the content. If nothing fits, use "Other".
+
+Never leave it blank, never invent new categories.
 IMAGE rules (critical):
 - If the image is AI-generated, digitally manipulated, or depicts a physically or
   HISTORICALLY IMPOSSIBLE scene (e.g. a person on the Moon who died before spaceflight,
@@ -701,9 +719,15 @@ def groq_scan(body, page_context=""):
             tags.append({"text": str(f)[:40], "kind": kind})
 
         summary = str(data.get("summary", "")) or "Analysis complete."
+        raw_topic = str(data.get("topic", "Other")).strip()
+        # Strip quotes the model sometimes adds
+        raw_topic = raw_topic.strip('"\'')
+        topic = raw_topic if raw_topic in TOPICS else "Other"
+        print("topic:")
+        print(topic)
         return assemble(score, confidence, input_type, breakdown, details, tags,
-                        summary, "groq",
-                        key_findings=key_findings, recommendation=recommendation)
+                        summary, "groq", topic=topic, key_findings=key_findings, 
+                        recommendation=recommendation)
     except Exception as e:
         print("[scan] Groq call failed (" + str(e) + "); using heuristic.")
         return None
@@ -724,11 +748,14 @@ async def scan(body: ScanBody):
     if not has_image and looks_like_url(body.input):
         _, title, text = fetch_url(body.input)
         page_context = title + "\n" + text
-
+    
     smart = groq_scan(body, page_context)
+    print(smart)
     if smart:
         return smart
 
     if has_image:
+        print(heuristic_image(body.input, body.filename))
         return heuristic_image(body.input, body.filename)
+    print(heuristic_text_or_article(body.input.strip()))
     return heuristic_text_or_article(body.input.strip())

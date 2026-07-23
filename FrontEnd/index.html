@@ -725,7 +725,7 @@
   </main>
 </div>
 
-<!-- ========== SCREEN 10: TRENDS ========== -->
+<!-- ========== SCREEN 10: Topics ========== -->
 <div class="screen" id="screen-trends">
   <nav class="navbar">
     <div class="logo">Credify</div>
@@ -735,15 +735,10 @@
     </div>
   </nav>
   <main class="body-section">
-    <h2 class="page-title">Misinformation trends</h2>
-    <p class="page-sub">Topics most commonly targeted by fake news and misinformation</p>
+    <h2 class="page-title">Topics</h2>
+    <p class="page-sub">Most common news topics reported</p>
     <div class="trends-grid" id="trends-grid">
-      <div class="trend-card"><div class="trend-topic">Politics</div><div class="trend-count">4,821</div><div class="trend-lbl">flagged articles</div><div class="trend-bar-row"><div class="trend-bar-track"><div class="trend-bar-fill" style="width:92%;background:#F87171;"></div></div><span class="trend-pct">92%</span></div></div>
-      <div class="trend-card"><div class="trend-topic">Health</div><div class="trend-count">3,102</div><div class="trend-lbl">flagged articles</div><div class="trend-bar-row"><div class="trend-bar-track"><div class="trend-bar-fill" style="width:74%;background:#FACC15;"></div></div><span class="trend-pct">74%</span></div></div>
-      <div class="trend-card"><div class="trend-topic">Economy</div><div class="trend-count">1,894</div><div class="trend-lbl">flagged articles</div><div class="trend-bar-row"><div class="trend-bar-track"><div class="trend-bar-fill" style="width:56%;background:#A78BFA;"></div></div><span class="trend-pct">56%</span></div></div>
-      <div class="trend-card"><div class="trend-topic">Science</div><div class="trend-count">1,201</div><div class="trend-lbl">flagged articles</div><div class="trend-bar-row"><div class="trend-bar-track"><div class="trend-bar-fill" style="width:38%;background:#A78BFA;"></div></div><span class="trend-pct">38%</span></div></div>
-      <div class="trend-card"><div class="trend-topic">Celebrities</div><div class="trend-count">987</div><div class="trend-lbl">flagged articles</div><div class="trend-bar-row"><div class="trend-bar-track"><div class="trend-bar-fill" style="width:29%;background:#4ADE80;"></div></div><span class="trend-pct">29%</span></div></div>
-      <div class="trend-card"><div class="trend-topic">Disaster</div><div class="trend-count">654</div><div class="trend-lbl">flagged articles</div><div class="trend-bar-row"><div class="trend-bar-track"><div class="trend-bar-fill" style="width:18%;background:#4ADE80;"></div></div><span class="trend-pct">18%</span></div></div>
+      <!-- populated by loadTrends() in app.js -->
     </div>
   </main>
 </div>
@@ -785,11 +780,11 @@
       </div>
     </div>
     <div class="stats-grid">
-      <div class="stat-card"><div class="stat-big green">24</div><div class="stat-lbl">Verified</div></div>
-      <div class="stat-card"><div class="stat-big red">5</div><div class="stat-lbl">Flagged</div></div>
-      <div class="stat-card"><div class="stat-big purple">12</div><div class="stat-lbl">This month</div></div>
+      <div class="stat-card"><div class="stat-big green" id="stat-total">24</div><div class="stat-lbl">Reports</div></div>
+      <div class="stat-card"><div class="stat-big red" id="stat-flagged">5</div><div class="stat-lbl">Flagged</div></div>
+      <div class="stat-card"><div class="stat-big purple" id="stat-month">12</div><div class="stat-lbl">This month</div></div>
     </div>
-    <div class="setting-item"><span class="setting-name">Email address</span><span class="setting-action" onclick="goto('screen-change-email')">Change</span></div>
+    <div class="setting-item  "><span class="setting-name">Email address</span><span class="setting-action" onclick="goto('screen-change-email')">Change</span></div>
     <div class="setting-item"><span class="setting-name">Password</span><span class="setting-action" onclick="goto('screen-change-password')">Update</span></div>
     <div class="setting-item"><span class="setting-name">Clear verification history</span><span class="setting-action danger" onclick="confirmClearHistory()">Clear all</span></div>
     <div class="setting-item"><span class="setting-name">Delete account</span><span class="setting-action danger" onclick="goto('screen-delete-account')">Delete</span></div>
@@ -836,8 +831,8 @@
     <div class="admin-tabs">
       <button class="admin-tab active" id="atab-overview" onclick="switchAdminTab('overview')">Overview</button>
       <button class="admin-tab" id="atab-flags" onclick="switchAdminTab('flags')">Flags <span class="atab-badge" id="flags-badge"></span></button>
-      <button class="admin-tab" id="atab-trends" onclick="switchAdminTab('trends')">Trends</button>
-      <button class="admin-tab" id="atab-claims" onclick="switchAdminTab('claims')">Known-false claims</button>
+      <!-- <button class="admin-tab" id="atab-trends" onclick="switchAdminTab('trends')">Trends</button>
+      <button class="admin-tab" id="atab-claims" onclick="switchAdminTab('claims')">Known-false claims</button> -->
     </div>
 
     <!-- TAB: OVERVIEW -->
@@ -867,7 +862,7 @@
     </div>
 
     <!-- TAB: TRENDS -->
-    <div class="admin-panel" id="apanel-trends" style="display:none">
+    <!-- <div class="admin-panel" id="apanel-trends" style="display:none">
       <p class="admin-hint">These rows drive the public Trends page. Edit a value and hit Save.</p>
       <div id="trend-rows" class="trend-rows"><div class="admin-loading">Loading…</div></div>
       <div class="trend-add-row">
@@ -876,10 +871,10 @@
         <input class="text-input a-input a-input-num" id="new-trend-pct" type="number" min="0" max="100" placeholder="%"/>
         <button class="btn-submit a-btn" onclick="addTrend()">Add topic</button>
       </div>
-    </div>
+    </div> -->
 
     <!-- TAB: CLAIMS -->
-    <div class="admin-panel" id="apanel-claims" style="display:none">
+    <!-- <div class="admin-panel" id="apanel-claims" style="display:none">
       <p class="admin-hint">The scan engine merges these with its built-in debunked-claims list (refreshes within ~60s, no redeploy needed). Patterns are matched case-insensitively; regex is supported.</p>
       <div id="claim-rows" class="trend-rows"><div class="admin-loading">Loading…</div></div>
       <div class="trend-add-row">
@@ -887,7 +882,7 @@
         <input class="text-input a-input" id="new-claim-reason" placeholder="Reason shown to users"/>
         <button class="btn-submit a-btn" onclick="addClaim()">Add claim</button>
       </div>
-    </div>
+    </div> -->
   </main>
 </div>
 
