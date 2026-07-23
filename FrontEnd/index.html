@@ -596,7 +596,7 @@
     <div class="two-col">
       <div class="info-box">
         <div class="box-title">Credibility breakdown</div>
-        <div class="cred-row"><span class="cred-key" style="font-weight:600;color:var(--text2)">Overall credibility</span><div class="cred-bar" style="height:6px"><div class="cred-fill" id="rc-bar-overall" style="--pct:0"></div></div><span class="cred-val" id="rc-val-overall">0%</span></div>
+        <div class="cred-row"><span class="cred-key" style="font-weight:600;color:var(--text2)">Overall credibility</span><div class="cred-bar" style="height:6px"><div class="cred-fill" id="rc-bar-overall" data-pct="0" style="--pct:0%"></div></div><span class="cred-val" id="rc-val-overall">0%</span></div>
         <div class="conf-note">Assessment confidence: <span id="rc-confidence">—</span></div>
         <div style="height:1px;background:var(--border);margin:10px 0 14px"></div>
         <div id="rc-breakdown-rows"></div>
@@ -624,7 +624,7 @@
 
     <div class="action-bar">
       <button class="btn-recheck" onclick="runScan()">↺ Re-check</button>
-      <button class="btn-share">↗ Share report</button>
+      <button class="btn-download" id="rc-download" onclick="downloadReport(this)">↓ Download report</button>
       <button class="btn-outline-purple" onclick="openFlagForm()">⚑ Flag issue</button>
     </div>
     </div><!-- /result-main -->
@@ -953,6 +953,7 @@
 
 <script src="https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit" async defer></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.2/dist/jspdf.umd.min.js"></script>
 <script src="config.js"></script>
 <script src="app.js"></script>
 <script src="admin.js"></script>

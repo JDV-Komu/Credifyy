@@ -231,6 +231,19 @@ button { cursor: pointer; font-family: 'Instrument Sans', sans-serif; border: no
 }
 .btn-share:hover { border-color: var(--border3); color: var(--text); }
 
+.btn-download {
+  background: var(--bg3);
+  color: var(--text2);
+  border: 0.5px solid var(--border2);
+  border-radius: var(--radius-sm);
+  padding: 9px 14px;
+  font-size: 13px;
+  white-space: nowrap;
+  transition: border-color 0.2s ease, color 0.2s ease, opacity 0.2s ease;
+}
+.btn-download:hover { border-color: var(--border3); color: var(--text); }
+.btn-download[disabled] { opacity: 0.55; cursor: default; }
+
 .btn-outline-purple {
   background: var(--purple-glow);
   color: var(--purple-light);
@@ -933,12 +946,12 @@ button { cursor: pointer; font-family: 'Instrument Sans', sans-serif; border: no
   overflow: hidden;
 }
 .cred-fill {
-  --pct: 0;
+  --pct: 0%;
   position: absolute;
   inset: 0;
   border-radius: 100px;
   background: var(--score-ramp);
-  clip-path: inset(0 calc(100% - var(--pct) * 1%) 0 0);
+  clip-path: inset(0 calc(100% - var(--pct)) 0 0);
   transition: clip-path 0.9s cubic-bezier(.22,.9,.28,1);
 }
 .cred-val { font-size: 12px; font-weight: 600; color: var(--text2); min-width: 38px; text-align: right; flex-shrink: 0; font-variant-numeric: tabular-nums; }
